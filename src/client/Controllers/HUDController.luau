@@ -11,14 +11,23 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Events = Shared:WaitForChild("Events")
 local GoldUpdated = Events:WaitForChild("GoldUpdated") :: RemoteEvent
 local NotificationEvent = Events:WaitForChild("ShowNotification") :: RemoteEvent
+local DimensionChanged = Events:WaitForChild("DimensionChanged") :: RemoteEvent
+local BossUpdated = Events:WaitForChild("BossUpdated") :: RemoteEvent
 
 local HUDController = {}
 
 -- UI-Element-Referenzen
 local screenGui: ScreenGui? = nil
+local topBarFrame: Frame? = nil
 local goldAmountLabel: TextLabel? = nil
 local cpsLabel: TextLabel? = nil
 local goldCardFrame: Frame? = nil
+local dimensionLabel: TextLabel? = nil
+
+-- Boss Health Bar Referenzen
+local bossBarContainer: Frame? = nil
+local bossBarFill: Frame? = nil
+local bossTitleLabel: TextLabel? = nil
 
 -- Toast-Referenzen
 local toastFrame: Frame? = nil
@@ -54,15 +63,59 @@ local function createHUD()
 	gui.Parent = PlayerGui
 	screenGui = gui
 
-	-- 1. OBERER CONTAINER: Gold & CPS Anzeige
+	-- 1. BOSS HEALTH BAR (Oben mittig)
+	local bossFrame = Instance.new("Frame")
+	bossFrame.Name = "BossBar"
+	bossFrame.Size = UDim2.new(0, 360, 0, 40)
+	bossFrame.Position = UDim2.new(0.5, -180, 0, 15)
+	bossFrame.BackgroundColor3 = Color3.fromRGB(20, 22, 28)
+	bossFrame.BackgroundTransparency = 0.2
+	bossFrame.Visible = false
+	bossFrame.Parent = gui
+	bossBarContainer = bossFrame
+
+	local bCorner = Instance.new("UICorner")
+	bCorner.CornerRadius = UDim.new(0, 8)
+	bCorner.Parent = bossFrame
+
+	local bStroke = Instance.new("UIStroke")
+	bStroke.Color = Color3.fromRGB(231, 76, 60)
+	bStroke.Thickness = 1.5
+	bStroke.Parent = bossFrame
+
+	local bFill = Instance.new("Frame")
+	bFill.Name = "Fill"
+	bFill.Size = UDim2.new(1, 0, 1, 0)
+	bFill.BackgroundColor3 = Color3.fromRGB(192, 57, 43)
+	bFill.BorderSizePixel = 0
+	bFill.Parent = bossFrame
+	bossBarFill = bFill
+
+	local bFillCorner = Instance.new("UICorner")
+	bFillCorner.CornerRadius = UDim.new(0, 8)
+	bFillCorner.Parent = bFill
+
+	local bTitle = Instance.new("TextLabel")
+	bTitle.Name = "BossTitle"
+	bTitle.Size = UDim2.new(1, 0, 1, 0)
+	bTitle.BackgroundTransparency = 1
+	bTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
+	bTitle.Font = Enum.Font.GothamBold
+	bTitle.TextSize = 13
+	bTitle.Text = "👹 Wald-Golem: 300 / 300 HP"
+	bTitle.Parent = bossFrame
+	bossTitleLabel = bTitle
+
+	-- 2. OBERER CONTAINER: Gold & CPS Anzeige
 	local topBar = Instance.new("Frame")
 	topBar.Name = "TopBar"
 	topBar.Size = UDim2.new(0, 320, 0, 75)
-	topBar.Position = UDim2.new(0.5, -160, 0, 20)
+	topBar.Position = UDim2.new(0.5, -160, 0, 65)
 	topBar.BackgroundTransparency = 1
 	topBar.Parent = gui
+	topBarFrame = topBar
 
-	-- Gold-Card (Hintergrund mit abgerundeten Ecken & Umrandung)
+	-- Gold-Card
 	local goldCard = Instance.new("Frame")
 	goldCard.Name = "GoldCard"
 	goldCard.Size = UDim2.new(1, 0, 1, 0)
@@ -142,11 +195,11 @@ local function createHUD()
 	subTitle.Text = "SEELEN-GOLD"
 	subTitle.Parent = goldCard
 
-	-- 2. TOAST-BENACHRICHTIGUNG (unter dem Gold-Header)
+	-- 3. TOAST-BENACHRICHTIGUNG
 	local toast = Instance.new("Frame")
 	toast.Name = "ToastBanner"
 	toast.Size = UDim2.new(0, 360, 0, 44)
-	toast.Position = UDim2.new(0.5, -180, 0, 105)
+	toast.Position = UDim2.new(0.5, -180, 0, 150)
 	toast.BackgroundColor3 = Color3.fromRGB(20, 22, 28)
 	toast.BackgroundTransparency = 1
 	toast.Visible = false
@@ -189,11 +242,11 @@ local function createHUD()
 	tLabel.Parent = toast
 	toastText = tLabel
 
-	-- 3. UNTERER RECHTER CONTAINER: Status-Kachel
+	-- 4. UNTERER RECHTER CONTAINER: Status-Kachel
 	local infoContainer = Instance.new("Frame")
 	infoContainer.Name = "InfoContainer"
-	infoContainer.Size = UDim2.new(0, 210, 0, 60)
-	infoContainer.Position = UDim2.new(1, -225, 1, -75)
+	infoContainer.Size = UDim2.new(0, 220, 0, 60)
+	infoContainer.Position = UDim2.new(1, -235, 1, -75)
 	infoContainer.BackgroundColor3 = Color3.fromRGB(22, 24, 30)
 	infoContainer.BackgroundTransparency = 0.25
 	infoContainer.Parent = gui
@@ -207,17 +260,18 @@ local function createHUD()
 	infoStroke.Thickness = 1
 	infoStroke.Parent = infoContainer
 
-	local dimensionLabel = Instance.new("TextLabel")
-	dimensionLabel.Name = "Dimension"
-	dimensionLabel.Size = UDim2.new(1, -20, 0, 22)
-	dimensionLabel.Position = UDim2.new(0, 10, 0, 8)
-	dimensionLabel.BackgroundTransparency = 1
-	dimensionLabel.TextColor3 = Color3.fromRGB(116, 185, 255)
-	dimensionLabel.Font = Enum.Font.GothamBold
-	dimensionLabel.TextSize = 13
-	dimensionLabel.TextXAlignment = Enum.TextXAlignment.Left
-	dimensionLabel.Text = "📍 Dimension: Oberwelt"
-	dimensionLabel.Parent = infoContainer
+	local dimLabel = Instance.new("TextLabel")
+	dimLabel.Name = "Dimension"
+	dimLabel.Size = UDim2.new(1, -20, 0, 22)
+	dimLabel.Position = UDim2.new(0, 10, 0, 8)
+	dimLabel.BackgroundTransparency = 1
+	dimLabel.TextColor3 = Color3.fromRGB(116, 185, 255)
+	dimLabel.Font = Enum.Font.GothamBold
+	dimLabel.TextSize = 13
+	dimLabel.TextXAlignment = Enum.TextXAlignment.Left
+	dimLabel.Text = "📍 Dimension: Oberwelt"
+	dimLabel.Parent = infoContainer
+	dimensionLabel = dimLabel
 
 	local weaponLabel = Instance.new("TextLabel")
 	weaponLabel.Name = "Weapon"
@@ -230,6 +284,34 @@ local function createHUD()
 	weaponLabel.TextXAlignment = Enum.TextXAlignment.Left
 	weaponLabel.Text = "⚔️ Waffe: Rostiges Schwert"
 	weaponLabel.Parent = infoContainer
+end
+
+-- Aktualisiert den Boss-Lebensbalken
+function HUDController.UpdateBossBar(name: string, health: number, maxHealth: number, isAlive: boolean)
+	if not bossBarContainer or not bossBarFill or not bossTitleLabel then
+		return
+	end
+
+	if isAlive and health > 0 then
+		bossBarContainer.Visible = true
+		local pct = math.clamp(health / maxHealth, 0, 1)
+		TweenService:Create(bossBarFill, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = UDim2.new(pct, 0, 1, 0) }):Play()
+		bossTitleLabel.Text = string.format("👹 %s: %d / %d HP", name, math.max(0, math.floor(health)), maxHealth)
+	else
+		bossTitleLabel.Text = string.format("💀 %s: Besiegt!", name)
+		task.delay(2.5, function()
+			if bossBarContainer then
+				bossBarContainer.Visible = false
+			end
+		end)
+	end
+end
+
+-- Ändert den angezeigten Dimensions-Namen
+function HUDController.SetDimension(dimensionName: string)
+	if dimensionLabel then
+		dimensionLabel.Text = string.format("📍 Dimension: %s", dimensionName)
+	end
 end
 
 -- Zeigt eine animierte Benachrichtigung an
@@ -261,7 +343,6 @@ function HUDController.ShowNotification(message: string, isError: boolean?)
 		if not toastFrame or not toastText or not toastIcon or not toastStroke then
 			return
 		end
-		-- Ausblenden
 		local fadeOut = TweenService:Create(toastFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { BackgroundTransparency = 1 })
 		TweenService:Create(toastStroke, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Transparency = 1 }):Play()
 		TweenService:Create(toastText, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { TextTransparency = 1 }):Play()
@@ -318,6 +399,14 @@ function HUDController.Init()
 
 	NotificationEvent.OnClientEvent:Connect(function(message: string, isError: boolean?)
 		HUDController.ShowNotification(message, isError)
+	end)
+
+	DimensionChanged.OnClientEvent:Connect(function(name: string)
+		HUDController.SetDimension(name)
+	end)
+
+	BossUpdated.OnClientEvent:Connect(function(name: string, health: number, maxHealth: number, isAlive: boolean)
+		HUDController.UpdateBossBar(name, health, maxHealth, isAlive)
 	end)
 
 	print("[HUDController] Initialisiert und ScreenGui erstellt.")

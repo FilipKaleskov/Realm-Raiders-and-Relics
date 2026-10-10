@@ -1,0 +1,5 @@
+{
+    "antigravity.agent.autoApprove": true,
+    "antigravity.agent.permissions.fileWrite": "allow",
+    "antigravity.agent.permissions.terminalExecute": "allow"
+}

@@ -135,6 +135,55 @@ function DataManager.SetSlot(player: Player, slotIndex: number, coreId: string?)
 	return true
 end
 
+-- Öffentliche API: Fügt einen Kern zum Inventar hinzu
+function DataManager.AddCore(player: Player, coreId: string): boolean
+	local profile = Profiles[player]
+	if profile == nil or not profile:IsActive() then
+		return false
+	end
+
+	table.insert(profile.Data.Inventory.Cores, coreId)
+	return true
+end
+
+-- Öffentliche API: Entfernt einen bestimmten Kern aus dem Inventar
+function DataManager.RemoveCore(player: Player, coreId: string): boolean
+	local profile = Profiles[player]
+	if profile == nil or not profile:IsActive() then
+		return false
+	end
+
+	local cores = profile.Data.Inventory.Cores
+	local index = table.find(cores, coreId)
+	if index then
+		table.remove(cores, index)
+		return true
+	end
+	return false
+end
+
+-- Öffentliche API: Wertet einen Sockel auf und zieht die Kosten ab
+function DataManager.UpgradeSlot(player: Player, slotIndex: number, cost: number): boolean
+	local profile = Profiles[player]
+	if profile == nil or not profile:IsActive() then
+		return false
+	end
+
+	local data = profile.Data
+	local slot = data.BaseData.Slots[slotIndex]
+	if not slot or not slot.CoreId then
+		return false
+	end
+
+	if data.Gold < cost then
+		return false -- Nicht genügend Gold
+	end
+
+	data.Gold -= cost
+	slot.Level += 1
+	return true
+end
+
 -- Initialisiert den DataManager und bindet die Player-Events an
 function DataManager.Init()
 	if isInitialized then

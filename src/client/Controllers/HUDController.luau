@@ -10,6 +10,7 @@ local PlayerGui = LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Events = Shared:WaitForChild("Events")
 local GoldUpdated = Events:WaitForChild("GoldUpdated") :: RemoteEvent
+local NotificationEvent = Events:WaitForChild("ShowNotification") :: RemoteEvent
 
 local HUDController = {}
 
@@ -18,6 +19,13 @@ local screenGui: ScreenGui? = nil
 local goldAmountLabel: TextLabel? = nil
 local cpsLabel: TextLabel? = nil
 local goldCardFrame: Frame? = nil
+
+-- Toast-Referenzen
+local toastFrame: Frame? = nil
+local toastText: TextLabel? = nil
+local toastIcon: TextLabel? = nil
+local toastStroke: UIStroke? = nil
+local currentToastThread: thread? = nil
 
 -- Hilfsfunktion: Formatierung großer Zahlen mit Tausendertrennzeichen
 local function formatNumber(n: number): string
@@ -121,7 +129,7 @@ local function createHUD()
 	cpsText.Parent = cpsBadge
 	cpsLabel = cpsText
 
-	-- Unterer kleiner Text "GOLDSTAND"
+	-- Unterer kleiner Text "SEELEN-GOLD"
 	local subTitle = Instance.new("TextLabel")
 	subTitle.Name = "Subtitle"
 	subTitle.Size = UDim2.new(0, 100, 0, 18)
@@ -134,7 +142,54 @@ local function createHUD()
 	subTitle.Text = "SEELEN-GOLD"
 	subTitle.Parent = goldCard
 
-	-- 2. UNTERER RECHTER CONTAINER: Status-Kachel
+	-- 2. TOAST-BENACHRICHTIGUNG (unter dem Gold-Header)
+	local toast = Instance.new("Frame")
+	toast.Name = "ToastBanner"
+	toast.Size = UDim2.new(0, 360, 0, 44)
+	toast.Position = UDim2.new(0.5, -180, 0, 105)
+	toast.BackgroundColor3 = Color3.fromRGB(20, 22, 28)
+	toast.BackgroundTransparency = 1
+	toast.Visible = false
+	toast.Parent = gui
+	toastFrame = toast
+
+	local tCorner = Instance.new("UICorner")
+	tCorner.CornerRadius = UDim.new(0, 10)
+	tCorner.Parent = toast
+
+	local tStroke = Instance.new("UIStroke")
+	tStroke.Color = Color3.fromRGB(46, 204, 113)
+	tStroke.Thickness = 1.5
+	tStroke.Transparency = 1
+	tStroke.Parent = toast
+	toastStroke = tStroke
+
+	local tIcon = Instance.new("TextLabel")
+	tIcon.Name = "Icon"
+	tIcon.Size = UDim2.new(0, 34, 1, 0)
+	tIcon.Position = UDim2.new(0, 8, 0, 0)
+	tIcon.BackgroundTransparency = 1
+	tIcon.Text = "✅"
+	tIcon.TextSize = 20
+	tIcon.TextTransparency = 1
+	tIcon.Parent = toast
+	toastIcon = tIcon
+
+	local tLabel = Instance.new("TextLabel")
+	tLabel.Name = "Message"
+	tLabel.Size = UDim2.new(1, -50, 1, 0)
+	tLabel.Position = UDim2.new(0, 42, 0, 0)
+	tLabel.BackgroundTransparency = 1
+	tLabel.TextColor3 = Color3.fromRGB(240, 240, 240)
+	tLabel.Font = Enum.Font.GothamBold
+	tLabel.TextSize = 13
+	tLabel.TextXAlignment = Enum.TextXAlignment.Left
+	tLabel.TextTransparency = 1
+	tLabel.Text = ""
+	tLabel.Parent = toast
+	toastText = tLabel
+
+	-- 3. UNTERER RECHTER CONTAINER: Status-Kachel
 	local infoContainer = Instance.new("Frame")
 	infoContainer.Name = "InfoContainer"
 	infoContainer.Size = UDim2.new(0, 210, 0, 60)
@@ -177,6 +232,49 @@ local function createHUD()
 	weaponLabel.Parent = infoContainer
 end
 
+-- Zeigt eine animierte Benachrichtigung an
+function HUDController.ShowNotification(message: string, isError: boolean?)
+	if not toastFrame or not toastText or not toastIcon or not toastStroke then
+		return
+	end
+
+	if currentToastThread then
+		task.cancel(currentToastThread)
+		currentToastThread = nil
+	end
+
+	local accentColor = if isError then Color3.fromRGB(231, 76, 60) else Color3.fromRGB(46, 204, 113)
+	local iconText = if isError then "⚠️" else "✅"
+
+	toastText.Text = message
+	toastIcon.Text = iconText
+	toastStroke.Color = accentColor
+	toastFrame.Visible = true
+
+	-- Einblenden
+	TweenService:Create(toastFrame, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 0.15 }):Play()
+	TweenService:Create(toastStroke, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Transparency = 0.2 }):Play()
+	TweenService:Create(toastText, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { TextTransparency = 0 }):Play()
+	TweenService:Create(toastIcon, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { TextTransparency = 0 }):Play()
+
+	currentToastThread = task.delay(3, function()
+		if not toastFrame or not toastText or not toastIcon or not toastStroke then
+			return
+		end
+		-- Ausblenden
+		local fadeOut = TweenService:Create(toastFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { BackgroundTransparency = 1 })
+		TweenService:Create(toastStroke, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Transparency = 1 }):Play()
+		TweenService:Create(toastText, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { TextTransparency = 1 }):Play()
+		TweenService:Create(toastIcon, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { TextTransparency = 1 }):Play()
+		fadeOut:Play()
+		fadeOut.Completed:Connect(function()
+			if toastFrame then
+				toastFrame.Visible = false
+			end
+		end)
+	end)
+end
+
 -- Aktualisiert die Anzeige und spielt eine dezente Pop-Animation ab
 function HUDController.UpdateGold(newGold: number, currentCPS: number?)
 	if not goldAmountLabel or not cpsLabel then
@@ -213,9 +311,13 @@ end
 function HUDController.Init()
 	createHUD()
 
-	-- Auf Server-Event reagieren
+	-- Auf Server-Events reagieren
 	GoldUpdated.OnClientEvent:Connect(function(newGold: number, currentCPS: number?)
 		HUDController.UpdateGold(newGold, currentCPS)
+	end)
+
+	NotificationEvent.OnClientEvent:Connect(function(message: string, isError: boolean?)
+		HUDController.ShowNotification(message, isError)
 	end)
 
 	print("[HUDController] Initialisiert und ScreenGui erstellt.")

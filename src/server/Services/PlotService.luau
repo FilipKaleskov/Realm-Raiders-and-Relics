@@ -42,6 +42,11 @@ end
 
 local EventsFolder = getOrCreateEventsFolder()
 local GoldUpdatedEvent = getOrCreateRemoteEvent(EventsFolder, "GoldUpdated")
+local NotificationEvent = getOrCreateRemoteEvent(EventsFolder, "ShowNotification")
+
+local function notifyPlayer(player: Player, message: string, isError: boolean?)
+	NotificationEvent:FireClient(player, message, isError or false)
+end
 
 local PlotService = {}
 
@@ -75,6 +80,164 @@ local function createBillboard(parent: Instance, text: string, offset: Vector3):
 	return billboard
 end
 
+-- Hilfsfunktion: Ruft ein Attachment ab oder erstellt es mit lokalem Offset
+local function getOrCreateAttachment(parent: BasePart, name: string, localPos: Vector3): Attachment
+	local existing = parent:FindFirstChild(name)
+	if existing and existing:IsA("Attachment") then
+		existing.Position = localPos
+		return existing
+	end
+	local att = Instance.new("Attachment")
+	att.Name = name
+	att.Position = localPos
+	att.Parent = parent
+	return att
+end
+
+-- Richtet die ProximityPrompts für Sockel ein (Platzieren, Upgraden, Entfernen)
+local function setupPedestalPrompts(pedestal: BasePart, player: Player, slotIndex: number, slotData: any)
+	-- Bestehende Prompts bereinigen (auch in Attachments)
+	for _, desc in pedestal:GetDescendants() do
+		if desc:IsA("ProximityPrompt") then
+			desc:Destroy()
+		end
+	end
+
+	-- Attachments für getrennte 3D-Positionen (Links = Upgraden, Rechts = Entfernen, Mitte = Platzieren)
+	local leftAtt = getOrCreateAttachment(pedestal, "PromptLeftAtt", Vector3.new(-2.2, 0.8, 0))
+	local rightAtt = getOrCreateAttachment(pedestal, "PromptRightAtt", Vector3.new(2.2, 0.8, 0))
+	local centerAtt = getOrCreateAttachment(pedestal, "PromptCenterAtt", Vector3.new(0, 0.8, 0))
+
+	if slotData and slotData.CoreId then
+		local bossInfo = BossConfig[slotData.CoreId]
+		local level = slotData.Level or 1
+		local upgradeCost = 50 * level
+		local bonusCPS = if bossInfo then bossInfo.BaseCPS else 5
+
+		-- Prompt 1: Upgraden ([E]) - Links vom Sockel
+		local upgradePrompt = Instance.new("ProximityPrompt")
+		upgradePrompt.Name = "UpgradePrompt"
+		upgradePrompt.ActionText = string.format("Upgraden (%d Gold)", upgradeCost)
+		upgradePrompt.ObjectText = string.format("Stufe %d -> %d (+%d Gold/s)", level, level + 1, bonusCPS)
+		upgradePrompt.KeyboardKeyCode = Enum.KeyCode.E
+		upgradePrompt.HoldDuration = 0.5
+		upgradePrompt.MaxActivationDistance = 12
+		upgradePrompt.RequiresLineOfSight = false
+		upgradePrompt.Exclusivity = Enum.ProximityPromptExclusivity.OnePerButton
+		upgradePrompt.Parent = leftAtt
+
+		upgradePrompt.Triggered:Connect(function(triggeringPlayer: Player)
+			if triggeringPlayer ~= player then
+				notifyPlayer(triggeringPlayer, "Dieser Sockel gehört " .. player.DisplayName .. "!", true)
+				return
+			end
+
+			local char = triggeringPlayer.Character
+			local root = if char then char:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
+			if not root or (root.Position - pedestal.Position).Magnitude > 16 then
+				return
+			end
+
+			local success = DataManager.UpgradeSlot(player, slotIndex, upgradeCost)
+			if success then
+				PlotService.UpdatePlotVisuals(player)
+				local updatedData = DataManager.Get(player)
+				if updatedData then
+					GoldUpdatedEvent:FireClient(player, updatedData.Gold, PlotService.CalculateCPS(player))
+				end
+				notifyPlayer(player, string.format("Sockel %d auf Stufe %d aufgewertet!", slotIndex, level + 1), false)
+			else
+				notifyPlayer(player, string.format("Nicht genug Gold! Du benötigst %d Gold.", upgradeCost), true)
+			end
+		end)
+
+		-- Prompt 2: Kern entfernen ([R]) - Rechts vom Sockel
+		local removePrompt = Instance.new("ProximityPrompt")
+		removePrompt.Name = "RemovePrompt"
+		removePrompt.ActionText = "Kern entfernen"
+		removePrompt.ObjectText = "Ins Inventar legen"
+		removePrompt.KeyboardKeyCode = Enum.KeyCode.R
+		removePrompt.HoldDuration = 1.0
+		removePrompt.MaxActivationDistance = 12
+		removePrompt.RequiresLineOfSight = false
+		removePrompt.Exclusivity = Enum.ProximityPromptExclusivity.OnePerButton
+		removePrompt.Parent = rightAtt
+
+		removePrompt.Triggered:Connect(function(triggeringPlayer: Player)
+			if triggeringPlayer ~= player then
+				notifyPlayer(triggeringPlayer, "Dieser Sockel gehört " .. player.DisplayName .. "!", true)
+				return
+			end
+
+			local char = triggeringPlayer.Character
+			local root = if char then char:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
+			if not root or (root.Position - pedestal.Position).Magnitude > 16 then
+				return
+			end
+
+			local coreId = slotData.CoreId
+			DataManager.SetSlot(player, slotIndex, nil)
+			DataManager.AddCore(player, coreId)
+
+			PlotService.UpdatePlotVisuals(player)
+			local updatedData = DataManager.Get(player)
+			if updatedData then
+				GoldUpdatedEvent:FireClient(player, updatedData.Gold, PlotService.CalculateCPS(player))
+			end
+
+			local name = if bossInfo then bossInfo.DisplayName else coreId
+			notifyPlayer(player, string.format("%s ins Inventar zurückgelegt.", name), false)
+		end)
+	else
+		-- Prompt: Kern platzieren ([E]) - Mittig auf dem Sockel
+		local placePrompt = Instance.new("ProximityPrompt")
+		placePrompt.Name = "PlacePrompt"
+		placePrompt.ActionText = "Seelenkern platzieren"
+		placePrompt.ObjectText = string.format("Sockel %d", slotIndex)
+		placePrompt.KeyboardKeyCode = Enum.KeyCode.E
+		placePrompt.HoldDuration = 0.5
+		placePrompt.MaxActivationDistance = 12
+		placePrompt.RequiresLineOfSight = false
+		placePrompt.Exclusivity = Enum.ProximityPromptExclusivity.OnePerButton
+		placePrompt.Parent = centerAtt
+
+		placePrompt.Triggered:Connect(function(triggeringPlayer: Player)
+			if triggeringPlayer ~= player then
+				notifyPlayer(triggeringPlayer, "Dieser Sockel gehört " .. player.DisplayName .. "!", true)
+				return
+			end
+
+			local char = triggeringPlayer.Character
+			local root = if char then char:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
+			if not root or (root.Position - pedestal.Position).Magnitude > 16 then
+				return
+			end
+
+			local data = DataManager.Get(player)
+			if not data or not data.Inventory or #data.Inventory.Cores == 0 then
+				notifyPlayer(player, "Kein Seelenkern im Inventar! Besiege Bosse, um Kerne zu erhalten.", true)
+				return
+			end
+
+			local coreId = data.Inventory.Cores[1]
+			local removed = DataManager.RemoveCore(player, coreId)
+			if removed then
+				DataManager.SetSlot(player, slotIndex, coreId)
+				PlotService.UpdatePlotVisuals(player)
+
+				local updatedData = DataManager.Get(player)
+				if updatedData then
+					GoldUpdatedEvent:FireClient(player, updatedData.Gold, PlotService.CalculateCPS(player))
+				end
+
+				local bossInfo = BossConfig[coreId]
+				local name = if bossInfo then bossInfo.DisplayName else coreId
+				notifyPlayer(player, string.format("%s auf Sockel %d platziert!", name, slotIndex), false)
+			end
+		end)
+	end
+end
+
 -- Aktualisiert die optische Anzeige auf den Statuen-Sockeln eines Plots
 function PlotService.UpdatePlotVisuals(player: Player)
 	local plot = PlayerPlots[player]
@@ -104,11 +267,15 @@ function PlotService.UpdatePlotVisuals(player: Player)
 			if slotData and slotData.CoreId then
 				local bossInfo = BossConfig[slotData.CoreId]
 				local displayName = if bossInfo then bossInfo.DisplayName else slotData.CoreId
-				local cps = if bossInfo then bossInfo.BaseCPS * (slotData.Level or 1) else 0
+				local level = slotData.Level or 1
+				local cps = if bossInfo then bossInfo.BaseCPS * level else 0
 
 				if label then
-					label.Text = string.format("Slot %d: %s\n(+%d Gold/s)", slotIndex, displayName, cps)
+					label.Text = string.format("Slot %d: %s (Stufe %d)\n(+%d Gold/s)", slotIndex, displayName, level, cps)
 					label.TextColor3 = Color3.fromRGB(46, 204, 113)
+				end
+				if billboard then
+					billboard.StudsOffset = Vector3.new(0, 4.4, 0)
 				end
 
 				-- Visueller Kern (leuchtender Part), falls noch nicht vorhanden
@@ -116,7 +283,7 @@ function PlotService.UpdatePlotVisuals(player: Player)
 					local corePart = Instance.new("Part")
 					corePart.Name = "CoreModel"
 					corePart.Size = Vector3.new(2.5, 2.5, 2.5)
-					corePart.Position = pedestal.Position + Vector3.new(0, 3, 0)
+					corePart.Position = pedestal.Position + Vector3.new(0, 2.6, 0)
 					corePart.Anchored = true
 					corePart.CanCollide = false
 					corePart.Material = Enum.Material.Neon
@@ -128,10 +295,16 @@ function PlotService.UpdatePlotVisuals(player: Player)
 					label.Text = string.format("Slot %d: [Leer]", slotIndex)
 					label.TextColor3 = Color3.fromRGB(180, 180, 180)
 				end
+				if billboard then
+					billboard.StudsOffset = Vector3.new(0, 2.8, 0)
+				end
 				if coreModel then
 					coreModel:Destroy()
 				end
 			end
+
+			-- Prompts für diesen Sockel aktualisieren
+			setupPedestalPrompts(pedestal, player, slotIndex, slotData)
 		end
 	end
 end
@@ -151,11 +324,21 @@ local function clearPlotVisuals(plot: Model)
 				coreModel:Destroy()
 			end
 
+			-- Prompts entfernen
+			for _, desc in pedestal:GetDescendants() do
+				if desc:IsA("ProximityPrompt") then
+					desc:Destroy()
+				end
+			end
+
 			local billboard = pedestal:FindFirstChild("PlotInfo") :: BillboardGui?
 			local label = if billboard then billboard:FindFirstChild("Label") :: TextLabel? else nil
 			if label then
 				label.Text = string.format("Slot %d: [Leer]", slotIndex)
 				label.TextColor3 = Color3.fromRGB(180, 180, 180)
+			end
+			if billboard then
+				billboard.StudsOffset = Vector3.new(0, 3.0, 0)
 			end
 		end
 	end

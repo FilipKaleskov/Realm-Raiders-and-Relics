@@ -1,13 +1,10 @@
 --!strict
 
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Controllers = script:WaitForChild("Controllers")
+local HUDControllerModule = Controllers:WaitForChild("HUDController") :: ModuleScript
+local HUDController = require(HUDControllerModule)
 
-local Shared = ReplicatedStorage:WaitForChild("Shared")
-local Events = Shared:WaitForChild("Events")
-local GoldUpdated = Events:WaitForChild("GoldUpdated") :: RemoteEvent
+-- Client-Controller starten
+HUDController.Init()
 
-GoldUpdated.OnClientEvent:Connect(function(newGold: number, currentCPS: number?)
-	print(string.format("[Client] Gold aktualisiert: %d Gold (+%d/s)", newGold, currentCPS or 0))
-end)
-
-print("[Client] Realm Raiders Client initialisiert und mit GoldUpdated verbunden.")
+print("[Client] Realm Raiders Client erfolgreich gebootet.")

@@ -10,11 +10,16 @@ local PlayerDataTemplate = require(PlayerDataModule)
 
 local Server = ServerScriptService:WaitForChild("Server")
 local Services = Server:WaitForChild("Services")
+
 local DataManagerModule = Services:WaitForChild("DataManager") :: ModuleScript
 local DataManager = require(DataManagerModule)
 
+local PlotServiceModule = Services:WaitForChild("PlotService") :: ModuleScript
+local PlotService = require(PlotServiceModule)
+
 -- Services initialisieren
 DataManager.Init()
+PlotService.Init()
 
 print("Realm Raiders Framework initialisiert")
 print(string.format(

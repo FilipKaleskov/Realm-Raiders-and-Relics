@@ -35,6 +35,7 @@ local AttackIntentEvent = getOrCreateRemoteEvent(EventsFolder, "AttackIntent")
 local BossUpdatedEvent = getOrCreateRemoteEvent(EventsFolder, "BossUpdated")
 local BossTelegraphEvent = getOrCreateRemoteEvent(EventsFolder, "BossTelegraphStarted")
 local NotificationEvent = getOrCreateRemoteEvent(EventsFolder, "ShowNotification")
+local GoldUpdatedEvent = getOrCreateRemoteEvent(EventsFolder, "GoldUpdated")
 
 local BossService = {}
 
@@ -290,6 +291,11 @@ local function handleBossDefeated(killer: Player?)
 		local goldReward = BossConfig.ForestGolemCore.GoldReward
 		DataManager.AddGold(killer, goldReward)
 		DataManager.AddCore(killer, "ForestGolemCore")
+
+		local killerData = DataManager.Get(killer)
+		if killerData then
+			GoldUpdatedEvent:FireClient(killer, killerData.Gold)
+		end
 
 		NotificationEvent:FireClient(
 			killer,

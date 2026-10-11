@@ -502,6 +502,7 @@ local function assignPlotToPlayer(player: Player)
 				if data and player:IsDescendantOf(Players) then
 					PlotService.UpdatePlotVisuals(player)
 					GoldUpdatedEvent:FireClient(player, data.Gold, PlotService.CalculateCPS(player))
+					DataManager.SyncInventory(player)
 				end
 			end)
 

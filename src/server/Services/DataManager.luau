@@ -40,6 +40,33 @@ local ProfileStore: ProfileStore = (ProfileService :: any).GetProfileStore(
 	PlayerDataTemplate
 )
 
+-- Events Folder & Remotes
+local function getOrCreateEventsFolder(): Folder
+	local events = Shared:FindFirstChild("Events")
+	if not events then
+		local newEvents = Instance.new("Folder")
+		newEvents.Name = "Events"
+		newEvents.Parent = Shared
+		return newEvents
+	end
+	return events :: Folder
+end
+
+local function getOrCreateRemoteEvent(parent: Instance, name: string): RemoteEvent
+	local existing = parent:FindFirstChild(name)
+	if existing and existing:IsA("RemoteEvent") then
+		return existing
+	end
+	local newRemote = Instance.new("RemoteEvent")
+	newRemote.Name = name
+	newRemote.Parent = parent
+	return newRemote
+end
+
+local EventsFolder = getOrCreateEventsFolder()
+local InventoryUpdatedEvent = getOrCreateRemoteEvent(EventsFolder, "InventoryUpdated")
+local RequestInventoryEvent = getOrCreateRemoteEvent(EventsFolder, "RequestInventory")
+
 local Profiles: { [Player]: Profile } = {}
 local isInitialized = false
 
@@ -62,6 +89,9 @@ local function onPlayerAdded(player: Player)
 		if player:IsDescendantOf(Players) then
 			Profiles[player] = profile
 			print(string.format("[DataManager] Profil erfolgreich geladen für %s (%d)", player.Name, player.UserId))
+			task.defer(function()
+				DataManager.SyncInventory(player)
+			end)
 		else
 			-- Spieler hat den Server während des Ladens bereits verlassen
 			profile:Release()
@@ -135,6 +165,14 @@ function DataManager.SetSlot(player: Player, slotIndex: number, coreId: string?)
 	return true
 end
 
+-- Öffentliche API: Synchronisiert das Inventar eines Spielers mit dessen Client
+function DataManager.SyncInventory(player: Player)
+	local profile = Profiles[player]
+	if profile ~= nil and profile:IsActive() then
+		InventoryUpdatedEvent:FireClient(player, profile.Data.Inventory)
+	end
+end
+
 -- Öffentliche API: Fügt einen Kern zum Inventar hinzu
 function DataManager.AddCore(player: Player, coreId: string): boolean
 	local profile = Profiles[player]
@@ -143,6 +181,7 @@ function DataManager.AddCore(player: Player, coreId: string): boolean
 	end
 
 	table.insert(profile.Data.Inventory.Cores, coreId)
+	DataManager.SyncInventory(player)
 	return true
 end
 
@@ -157,9 +196,39 @@ function DataManager.RemoveCore(player: Player, coreId: string): boolean
 	local index = table.find(cores, coreId)
 	if index then
 		table.remove(cores, index)
+		DataManager.SyncInventory(player)
 		return true
 	end
 	return false
+end
+
+-- Öffentliche API: Fügt eine Waffe zum Inventar hinzu
+function DataManager.AddWeapon(player: Player, weaponId: string): boolean
+	local profile = Profiles[player]
+	if profile == nil or not profile:IsActive() then
+		return false
+	end
+
+	table.insert(profile.Data.Inventory.Weapons, weaponId)
+	DataManager.SyncInventory(player)
+	return true
+end
+
+-- Öffentliche API: Modifiziert Materialmenge im Inventar
+function DataManager.AddMaterial(player: Player, materialKey: "IronOre" | "VoidCrystal", amount: number): boolean
+	local profile = Profiles[player]
+	if profile == nil or not profile:IsActive() then
+		return false
+	end
+
+	local current = profile.Data.Inventory.Materials[materialKey] or 0
+	if current + amount < 0 then
+		return false
+	end
+
+	profile.Data.Inventory.Materials[materialKey] = current + amount
+	DataManager.SyncInventory(player)
+	return true
 end
 
 -- Öffentliche API: Wertet einen Sockel auf und zieht die Kosten ab
@@ -197,6 +266,11 @@ function DataManager.Init()
 
 	Players.PlayerAdded:Connect(onPlayerAdded)
 	Players.PlayerRemoving:Connect(onPlayerRemoving)
+
+	-- Client-Anfrage für sofortigen Inventar-Sync
+	RequestInventoryEvent.OnServerEvent:Connect(function(player: Player)
+		DataManager.SyncInventory(player)
+	end)
 
 	print("[DataManager] Initialisiert und an Players gebunden.")
 end

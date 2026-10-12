@@ -137,7 +137,120 @@ local function getCustomPedestalTemplate(): Instance?
 	return nil
 end
 
--- Erzeugt eine Sockel-Instanz (bevorzugt das 3D-Blender-Modell, sonst solider Stein-Fallback)
+-- Erstellt einen detailreichen 3D-Dungeon-Sockel rein programmgesteuert (kein externer Import nötig)
+local function buildProceduralDungeonPedestal(slotIndex: number, targetPosition: Vector3): Model
+	local model = Instance.new("Model")
+	model.Name = "Sockel_" .. slotIndex
+	model:SetAttribute("SlotIndex", slotIndex)
+
+	-- 1. Unsichtbarer Root-Part für exakte Pivot- & Attachment-Kompatibilität
+	local root = Instance.new("Part")
+	root.Name = "Root"
+	root.Size = Vector3.new(4, 2, 4)
+	root.Position = targetPosition
+	root.Transparency = 1
+	root.CanCollide = false
+	root.Anchored = true
+	root.Parent = model
+	model.PrimaryPart = root
+
+	-- 2. Untere Basis-Stufe (Massives antikes Schiefer-Fundament)
+	local basePlinth = Instance.new("Part")
+	basePlinth.Name = "BasePlinth"
+	basePlinth.Size = Vector3.new(5.6, 0.6, 5.6)
+	basePlinth.Position = targetPosition - Vector3.new(0, 0.7, 0)
+	basePlinth.Color = Color3.fromRGB(36, 40, 44)
+	basePlinth.Material = Enum.Material.Slate
+	basePlinth.Anchored = true
+	basePlinth.CanCollide = true
+	basePlinth.Parent = model
+
+	-- 3. Mittlerer gestufter Säulenkörper (Verwittertes Dungeon-Pflaster)
+	local body = Instance.new("Part")
+	body.Name = "Body"
+	body.Size = Vector3.new(4.6, 1.4, 4.6)
+	body.Position = targetPosition + Vector3.new(0, 0.1, 0)
+	body.Color = Color3.fromRGB(54, 60, 66)
+	body.Material = Enum.Material.Cobblestone
+	body.Anchored = true
+	body.CanCollide = true
+	body.Parent = model
+
+	-- 4. Vier markante Eckpfeiler (Dungeon-Strebepfeiler mit Zierkanten)
+	local cornerOffsets = {
+		Vector3.new(-2.15, 0.1, -2.15),
+		Vector3.new(2.15, 0.1, -2.15),
+		Vector3.new(-2.15, 0.1, 2.15),
+		Vector3.new(2.15, 0.1, 2.15),
+	}
+	for i, cOffset in ipairs(cornerOffsets) do
+		local pillar = Instance.new("Part")
+		pillar.Name = "CornerPillar_" .. i
+		pillar.Size = Vector3.new(1.0, 1.8, 1.0)
+		pillar.Position = targetPosition + cOffset
+		pillar.Color = Color3.fromRGB(44, 48, 52)
+		pillar.Material = Enum.Material.Slate
+		pillar.Anchored = true
+		pillar.CanCollide = true
+		pillar.Parent = model
+	end
+
+	-- 5. Obere Altar-Platte (Opfertisch-Ebene)
+	local topSlab = Instance.new("Part")
+	topSlab.Name = "TopSlab"
+	topSlab.Size = Vector3.new(5.0, 0.4, 5.0)
+	topSlab.Position = targetPosition + Vector3.new(0, 0.95, 0)
+	topSlab.Color = Color3.fromRGB(48, 54, 58)
+	topSlab.Material = Enum.Material.Slate
+	topSlab.Anchored = true
+	topSlab.CanCollide = true
+	topSlab.Parent = model
+
+	-- 6. Eingelassene leuchtende Magie-Rune (Smaragdgrün/Teal)
+	local runeDisc = Instance.new("Part")
+	runeDisc.Name = "RuneCore"
+	runeDisc.Size = Vector3.new(3.0, 0.08, 3.0)
+	runeDisc.Position = targetPosition + Vector3.new(0, 1.18, 0)
+	runeDisc.Color = Color3.fromRGB(0, 230, 180)
+	runeDisc.Material = Enum.Material.Neon
+	runeDisc.Anchored = true
+	runeDisc.CanCollide = false
+	runeDisc.Parent = model
+
+	-- 7. Mystisches Umgebungslicht
+	local light = Instance.new("PointLight")
+	light.Name = "RuneLight"
+	light.Color = Color3.fromRGB(0, 230, 180)
+	light.Range = 9
+	light.Brightness = 0.9
+	light.Shadows = true
+	light.Parent = runeDisc
+
+	-- 8. Feine schwebende Magie-Partikel
+	local particles = Instance.new("ParticleEmitter")
+	particles.Name = "RuneParticles"
+	particles.Rate = 2.5
+	particles.Lifetime = NumberRange.new(2.0, 3.2)
+	particles.Speed = NumberRange.new(0.4, 1.0)
+	particles.SpreadAngle = Vector2.new(15, 15)
+	particles.Size = NumberSequence.new{
+		NumberSequenceKeypoint.new(0, 0.15),
+		NumberSequenceKeypoint.new(0.5, 0.25),
+		NumberSequenceKeypoint.new(1, 0),
+	}
+	particles.Transparency = NumberSequence.new{
+		NumberSequenceKeypoint.new(0, 0.8),
+		NumberSequenceKeypoint.new(0.3, 0.2),
+		NumberSequenceKeypoint.new(1, 1.0),
+	}
+	particles.Color = ColorSequence.new(Color3.fromRGB(0, 230, 180))
+	particles.LightEmission = 0.8
+	particles.Parent = runeDisc
+
+	return model
+end
+
+-- Erzeugt eine Sockel-Instanz (bevorzugt das 3D-Blender-Modell, sonst proceduralen Dungeon-Sockel)
 local function createPedestalInstance(slotIndex: number, targetPosition: Vector3): Instance
 	local template = getCustomPedestalTemplate()
 	if template then
@@ -166,17 +279,8 @@ local function createPedestalInstance(slotIndex: number, targetPosition: Vector3
 		end
 	end
 
-	-- Standard-Fallback (Robuster Steinblock)
-	local pedestal = Instance.new("Part")
-	pedestal.Name = "Sockel_" .. slotIndex
-	pedestal.Size = Vector3.new(4, 2, 4)
-	pedestal.Position = targetPosition
-	pedestal.Anchored = true
-	pedestal.CanCollide = true
-	pedestal.Material = Enum.Material.Cobblestone
-	pedestal.Color = Color3.fromRGB(99, 110, 114)
-	pedestal:SetAttribute("SlotIndex", slotIndex)
-	return pedestal
+	-- Proceduraler Dungeon-Sockel (3D-Modell mit Stufen, Eckpfeilern, leuchtender Rune & Partikeln)
+	return buildProceduralDungeonPedestal(slotIndex, targetPosition)
 end
 
 -- Hilfsfunktion: Ruft ein Attachment ab oder erstellt es mit lokalem Offset
@@ -746,7 +850,8 @@ local function setupTestRaidPlot(plot: Model)
 	end
 
 	local pedestal1 = pedestalsFolder:FindFirstChild("Sockel_1")
-	if not pedestal1 or not pedestal1:IsA("BasePart") then
+	local pedestalPart = getPedestalRootPart(pedestal1)
+	if not pedestal1 or not pedestalPart then
 		return
 	end
 
@@ -758,6 +863,13 @@ local function setupTestRaidPlot(plot: Model)
 				child:Destroy()
 			end
 		end
+		if pedestalPart ~= pedestal1 then
+			for _, child in pedestalPart:GetChildren() do
+				if child.Name == "StatueModel" or child.Name == "CoreModel" then
+					child:Destroy()
+				end
+			end
+		end
 
 		for _, desc in pedestal1:GetDescendants() do
 			if desc:IsA("ProximityPrompt") then
@@ -765,13 +877,13 @@ local function setupTestRaidPlot(plot: Model)
 			end
 		end
 
-		local centerAtt = getOrCreateAttachment(pedestal1, "PromptCenterAtt", Vector3.new(0, 0.8, 0))
+		local centerAtt = getOrCreateAttachment(pedestalPart, "PromptCenterAtt", Vector3.new(0, 0.8, 0))
 
 		-- 1. Visuelles Modell der Statue (Mini-Wald-Golem auf dem Sockel mit Stufe 2)
-		local statue = buildStatueOnPedestal(pedestal1, "ForestGolemCore", 2)
+		local statue = buildStatueOnPedestal(pedestalPart, "ForestGolemCore", 2)
 
 		-- Billboard
-		local billboard = pedestal1:FindFirstChild("PlotInfo") :: BillboardGui?
+		local billboard = pedestalPart:FindFirstChild("PlotInfo") :: BillboardGui? or (pedestal1:FindFirstChild("PlotInfo") :: BillboardGui?)
 		local label = if billboard then billboard:FindFirstChild("Label") :: TextLabel? else nil
 		if label then
 			label.Text = "Slot 1: Wald-Golem Statue (Stufe 2)\n(+10 Gold/s)"
@@ -796,7 +908,7 @@ local function setupTestRaidPlot(plot: Model)
 			local char = triggeringPlayer.Character
 			local root = if char then char:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
 			local hum = if char then char:FindFirstChild("Humanoid") :: Humanoid? else nil
-			if not root or not hum or hum.Health <= 0 or (root.Position - pedestal1.Position).Magnitude > 18 then
+			if not root or not hum or hum.Health <= 0 or (root.Position - pedestalPart.Position).Magnitude > 18 then
 				return
 			end
 

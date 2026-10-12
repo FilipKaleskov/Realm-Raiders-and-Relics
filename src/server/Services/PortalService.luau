@@ -31,47 +31,102 @@ local NotificationEvent = getOrCreateRemoteEvent(EventsFolder, "ShowNotification
 local PortalService = {}
 local isInitialized = false
 
-local OVERWORLD_PORTAL_POS = Vector3.new(95, 0.5, 0)
-local OVERWORLD_SPAWN = Vector3.new(82, 3.5, 0)
+-- Koordinaten für Oberwelt & Boss-Arena
+local OVERWORLD_PORTAL_POS = Vector3.new(160, 0.5, 0)
+local OVERWORLD_SPAWN = Vector3.new(148, 3.5, 0)
 local ARENA_SPAWN = BossService.ARENA_SPAWN
 local ARENA_PORTAL_POS = BossService.ARENA_PORTAL_POS
 
--- Erstellt einen Portal-Rahmen mit leuchtendem Portal-Vortex
-local function createPortal(name: string, position: Vector3, destination: Vector3, dimensionName: string, promptText: string): Model
+-- Erstellt eine Feuerschale / Fackel als Portal-Dekoration
+local function createPortalBrazier(position: Vector3, parent: Instance)
+	local stand = Instance.new("Part")
+	stand.Name = "BrazierStand"
+	stand.Size = Vector3.new(2.0, 3.6, 2.0)
+	stand.Position = position + Vector3.new(0, 1.8, 0)
+	stand.Color = Color3.fromRGB(45, 50, 54)
+	stand.Material = Enum.Material.Slate
+	stand.Anchored = true
+	stand.CanCollide = true
+	stand.Parent = parent
+
+	local bowl = Instance.new("Part")
+	bowl.Name = "BrazierBowl"
+	bowl.Size = Vector3.new(3.0, 1.0, 3.0)
+	bowl.Position = position + Vector3.new(0, 3.9, 0)
+	bowl.Color = Color3.fromRGB(28, 30, 34)
+	bowl.Material = Enum.Material.CorrodedMetal
+	bowl.Anchored = true
+	bowl.CanCollide = true
+	bowl.Parent = parent
+
+	local fireCore = Instance.new("Part")
+	fireCore.Name = "FireCore"
+	fireCore.Size = Vector3.new(1.8, 0.4, 1.8)
+	fireCore.Position = position + Vector3.new(0, 4.3, 0)
+	fireCore.Color = Color3.fromRGB(255, 140, 25)
+	fireCore.Material = Enum.Material.Neon
+	fireCore.Anchored = true
+	fireCore.CanCollide = false
+	fireCore.Parent = parent
+
+	local fire = Instance.new("Fire")
+	fire.Size = 3.5
+	fire.Heat = 4
+	fire.Color = Color3.fromRGB(255, 130, 30)
+	fire.SecondaryColor = Color3.fromRGB(255, 60, 10)
+	fire.Parent = fireCore
+
+	local light = Instance.new("PointLight")
+	light.Color = Color3.fromRGB(255, 155, 45)
+	light.Range = 18
+	light.Brightness = 1.8
+	light.Parent = fireCore
+end
+
+-- Erstellt einen antiken Tempel mit Stufen-Sockel, Steintor & schwebendem, rotierendem Amethyst-Kristall
+local function createPortal(
+	name: string,
+	position: Vector3,
+	facingLookAt: Vector3,
+	destination: Vector3,
+	dimensionName: string,
+	promptText: string
+): Model
 	local portalModel = Instance.new("Model")
 	portalModel.Name = name
 	portalModel.Parent = Workspace
 
-	-- Eigene Vorplatz-Plattform für das Oberwelt-Portal (damit es komplett frei steht)
-	if name == "Portal_WaldRuinen" then
-		local plaza = Instance.new("Part")
-		plaza.Name = "PortalPlaza"
-		plaza.Size = Vector3.new(26, 1, 26)
-		plaza.Position = position + Vector3.new(-4, 0, 0)
-		plaza.Color = Color3.fromRGB(50, 55, 65)
-		plaza.Material = Enum.Material.Cobblestone
-		plaza.Anchored = true
-		plaza.CanCollide = true
-		plaza.Parent = portalModel
+	local rootCFrame = CFrame.lookAt(position, Vector3.new(facingLookAt.X, position.Y, facingLookAt.Z))
+
+	-- 1. Dreistufiger Sockel aus weißem Marmor (wie im Trailer-Video)
+	local stepTiers = {
+		{ Size = Vector3.new(22, 1.2, 18), OffsetY = 0.6 },
+		{ Size = Vector3.new(18, 1.2, 14), OffsetY = 1.8 },
+		{ Size = Vector3.new(14, 1.2, 10), OffsetY = 3.0 },
+	}
+
+	for idx, tier in ipairs(stepTiers) do
+		local step = Instance.new("Part")
+		step.Name = "PlinthStep_" .. idx
+		step.Size = tier.Size
+		step.CFrame = rootCFrame * CFrame.new(0, tier.OffsetY, 0)
+		step.Color = Color3.fromRGB(240, 242, 246)
+		step.Material = Enum.Material.Marble
+		step.Anchored = true
+		step.CanCollide = true
+		step.Parent = portalModel
 	end
 
-	-- Portal-Sockel
-	local base = Instance.new("Part")
-	base.Name = "Base"
-	base.Size = Vector3.new(14, 2, 8)
-	base.Position = position + Vector3.new(0, 1, 0)
-	base.Color = Color3.fromRGB(60, 65, 75)
-	base.Material = Enum.Material.Cobblestone
-	base.Anchored = true
-	base.CanCollide = true
-	base.Parent = portalModel
+	-- Flankierende Feuerschalen am Fuß des Tempels
+	createPortalBrazier((rootCFrame * CFrame.new(-9.5, 0, 7)).Position, portalModel)
+	createPortalBrazier((rootCFrame * CFrame.new(9.5, 0, 7)).Position, portalModel)
 
-	-- Linke & Rechte Säule
+	-- 2. Antiker Steintor-Bogen (Säulen, Kapitelle, Querbalken & Giebel)
 	local pillarL = Instance.new("Part")
 	pillarL.Name = "PillarLeft"
-	pillarL.Size = Vector3.new(2.5, 14, 2.5)
-	pillarL.Position = position + Vector3.new(-5, 8, 0)
-	pillarL.Color = Color3.fromRGB(80, 85, 95)
+	pillarL.Size = Vector3.new(3.0, 16.0, 3.0)
+	pillarL.CFrame = rootCFrame * CFrame.new(-5.5, 11.6, 0)
+	pillarL.Color = Color3.fromRGB(48, 54, 60)
 	pillarL.Material = Enum.Material.Slate
 	pillarL.Anchored = true
 	pillarL.CanCollide = true
@@ -79,53 +134,124 @@ local function createPortal(name: string, position: Vector3, destination: Vector
 
 	local pillarR = Instance.new("Part")
 	pillarR.Name = "PillarRight"
-	pillarR.Size = Vector3.new(2.5, 14, 2.5)
-	pillarR.Position = position + Vector3.new(5, 8, 0)
-	pillarR.Color = Color3.fromRGB(80, 85, 95)
+	pillarR.Size = Vector3.new(3.0, 16.0, 3.0)
+	pillarR.CFrame = rootCFrame * CFrame.new(5.5, 11.6, 0)
+	pillarR.Color = Color3.fromRGB(48, 54, 60)
 	pillarR.Material = Enum.Material.Slate
 	pillarR.Anchored = true
 	pillarR.CanCollide = true
 	pillarR.Parent = portalModel
 
-	-- Oberer Querbalken
-	local topBeam = Instance.new("Part")
-	topBeam.Name = "TopBeam"
-	topBeam.Size = Vector3.new(13, 2.5, 3)
-	topBeam.Position = position + Vector3.new(0, 15, 0)
-	topBeam.Color = Color3.fromRGB(60, 65, 75)
-	topBeam.Material = Enum.Material.Cobblestone
-	topBeam.Anchored = true
-	topBeam.CanCollide = true
-	topBeam.Parent = portalModel
+	-- Kapitell-Aufsätze über den Säulen
+	for _, xSide in { -5.5, 5.5 } do
+		local cap = Instance.new("Part")
+		cap.Name = "Capital"
+		cap.Size = Vector3.new(4.0, 1.4, 4.0)
+		cap.CFrame = rootCFrame * CFrame.new(xSide, 20.3, 0)
+		cap.Color = Color3.fromRGB(62, 68, 76)
+		cap.Material = Enum.Material.Slate
+		cap.Anchored = true
+		cap.CanCollide = true
+		cap.Parent = portalModel
+	end
 
-	-- Leuchtender Portal-Vortex (Wirbel)
-	local vortex = Instance.new("Part")
-	vortex.Name = "PortalVortex"
-	vortex.Size = Vector3.new(7.5, 12, 0.6)
-	vortex.Position = position + Vector3.new(0, 8, 0)
-	vortex.Color = Color3.fromRGB(46, 204, 113)
-	vortex.Material = Enum.Material.Neon
-	vortex.Transparency = 0.25
-	vortex.Anchored = true
-	vortex.CanCollide = false
-	vortex.Parent = portalModel
+	-- Massiver Torbogen-Querbalken
+	local lintel = Instance.new("Part")
+	lintel.Name = "LintelBeam"
+	lintel.Size = Vector3.new(16.0, 3.2, 4.2)
+	lintel.CFrame = rootCFrame * CFrame.new(0, 22.0, 0)
+	lintel.Color = Color3.fromRGB(42, 47, 52)
+	lintel.Material = Enum.Material.Slate
+	lintel.Anchored = true
+	lintel.CanCollide = true
+	lintel.Parent = portalModel
 
-	local light = Instance.new("PointLight")
-	light.Color = Color3.fromRGB(46, 204, 113)
-	light.Brightness = 3
-	light.Range = 20
-	light.Parent = vortex
+	-- Antiker Zier-Giebel auf dem Balken
+	local pediment = Instance.new("Part")
+	pediment.Name = "Pediment"
+	pediment.Size = Vector3.new(10.0, 2.2, 3.8)
+	pediment.CFrame = rootCFrame * CFrame.new(0, 24.5, 0)
+	pediment.Color = Color3.fromRGB(52, 58, 66)
+	pediment.Material = Enum.Material.Slate
+	pediment.Anchored = true
+	pediment.CanCollide = true
+	pediment.Parent = portalModel
 
-	-- ProximityPrompt für Interaktion
+	-- 3. Schwebender, rotierender Amethyst-Kristall (Portal-Kern)
+	local crystalOrigin = rootCFrame * CFrame.new(0, 11.5, 0)
+
+	local crystal = Instance.new("Part")
+	crystal.Name = "AmethystCrystal"
+	crystal.Size = Vector3.new(3.8, 6.4, 3.8)
+	crystal.CFrame = crystalOrigin
+	crystal.Color = Color3.fromRGB(180, 50, 255) -- Mystisches Amethyst-Lila
+	crystal.Material = Enum.Material.Neon
+	crystal.Transparency = 0.15
+	crystal.Anchored = true
+	crystal.CanCollide = false
+	crystal.Parent = portalModel
+
+	-- Diamant-Facetten Mesh
+	local mesh = Instance.new("SpecialMesh")
+	mesh.MeshType = Enum.MeshType.Brick
+	mesh.Scale = Vector3.new(1.0, 1.0, 1.0)
+	mesh.Parent = crystal
+
+	-- Heller Amethyst-Lichtschein
+	local crystalLight = Instance.new("PointLight")
+	crystalLight.Name = "CrystalLight"
+	crystalLight.Color = Color3.fromRGB(180, 50, 255)
+	crystalLight.Brightness = 3.2
+	crystalLight.Range = 32
+	crystalLight.Parent = crystal
+
+	-- Ethereale Partikel-Aura (schwebende lila Sternen-Funken & Runenstaub)
+	local att = Instance.new("Attachment")
+	att.Name = "ParticleAtt"
+	att.Parent = crystal
+
+	local particles = Instance.new("ParticleEmitter")
+	particles.Name = "CrystalSparks"
+	particles.Rate = 22
+	particles.Lifetime = NumberRange.new(2.5, 4.0)
+	particles.Speed = NumberRange.new(1.2, 2.8)
+	particles.SpreadAngle = Vector2.new(180, 180)
+	particles.Size = NumberSequence.new{
+		NumberSequenceKeypoint.new(0, 0.8),
+		NumberSequenceKeypoint.new(0.5, 1.8),
+		NumberSequenceKeypoint.new(1, 0.2),
+	}
+	particles.Transparency = NumberSequence.new{
+		NumberSequenceKeypoint.new(0, 0.2),
+		NumberSequenceKeypoint.new(0.8, 0.4),
+		NumberSequenceKeypoint.new(1, 1.0),
+	}
+	particles.Color = ColorSequence.new(Color3.fromRGB(215, 105, 255))
+	particles.LightEmission = 1.0
+	particles.Parent = att
+
+	-- Sanfte Rotation & Schwebung animieren
+	task.spawn(function()
+		local startTime = os.clock()
+		while crystal:IsDescendantOf(Workspace) do
+			local elapsed = os.clock() - startTime
+			local bobOffset = math.sin(elapsed * 2.2) * 0.65
+			local spinCFrame = CFrame.Angles(0, math.rad(elapsed * 45), 0)
+			crystal.CFrame = crystalOrigin * CFrame.new(0, bobOffset, 0) * spinCFrame
+			task.wait(0.03)
+		end
+	end)
+
+	-- 4. ProximityPrompt für Dimensionstransfer
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "PortalPrompt"
 	prompt.ActionText = promptText
 	prompt.ObjectText = dimensionName
 	prompt.KeyboardKeyCode = Enum.KeyCode.E
 	prompt.HoldDuration = 0.5
-	prompt.MaxActivationDistance = 12
+	prompt.MaxActivationDistance = 14
 	prompt.RequiresLineOfSight = false
-	prompt.Parent = vortex
+	prompt.Parent = crystal
 
 	prompt.Triggered:Connect(function(player: Player)
 		local character = player.Character
@@ -134,7 +260,7 @@ local function createPortal(name: string, position: Vector3, destination: Vector
 		end
 
 		local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-		if not root or (root.Position - vortex.Position).Magnitude > 16 then
+		if not root or (root.Position - crystal.Position).Magnitude > 18 then
 			return
 		end
 
@@ -180,25 +306,33 @@ function PortalService.Init()
 		existingArena:Destroy()
 	end
 
-	-- 1. Portal in der Oberwelt (auf eigenem Vorplatz östlich der Plots) -> führt in die Wald-Ruinen
+	-- 1. Portal in der Oberwelt (steht auf der Felseninsel am Ende der Hängebrücke, blickt nach Westen zur Brücke)
 	createPortal(
 		"Portal_WaldRuinen",
 		OVERWORLD_PORTAL_POS,
+		Vector3.new(75, 0.5, 0), -- Blickrichtung zur Hängebrücke
 		ARENA_SPAWN,
 		"Wald-Ruinen (Boss-Arena)",
 		"Dimension betreten"
 	)
 
-	-- 2. Portal in der Boss-Arena -> führt zurück zur Oberwelt
+	-- 2. Portal in der Boss-Arena -> führt zurück zur Oberwelt (steht am Arenarand, blickt zum Bosszentrum)
 	createPortal(
 		"Portal_Oberwelt",
 		ARENA_PORTAL_POS,
+		BossService.ARENA_CENTER or Vector3.new(0, 500, 25000),
 		OVERWORLD_SPAWN,
 		"Oberwelt",
 		"Zurückkehren"
 	)
 
-	print("[PortalService] Dimensions-Portale erfolgreich initialisiert.")
+	print("[PortalService] Dimensions-Tempel & Amethyst-Portale erfolgreich initialisiert.")
+end
+
+-- Für die Studio Command Bar
+function PortalService.BuildInStudio()
+	isInitialized = false
+	PortalService.Init()
 end
 
 return PortalService

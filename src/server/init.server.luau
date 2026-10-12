@@ -63,6 +63,9 @@ local BossService = require(BossServiceModule)
 local RaidServiceModule = Services:WaitForChild("RaidService") :: ModuleScript
 local RaidService = require(RaidServiceModule)
 
+local EnvironmentServiceModule = Services:WaitForChild("EnvironmentService") :: ModuleScript
+local EnvironmentService = require(EnvironmentServiceModule)
+
 -- Optionale Test-Umgebung (Timișoara)
 local TimisoaraModule = Services:FindFirstChild("TimisoaraEnvironment") :: ModuleScript?
 if TimisoaraModule then
@@ -73,6 +76,7 @@ end
 -- Services initialisieren
 DataManager.Init()
 PlotService.Init()
+EnvironmentService.Init()
 PortalService.Init()
 BossService.Init()
 RaidService.Init()

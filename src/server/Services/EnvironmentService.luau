@@ -1,0 +1,475 @@
+--!strict
+
+local Players = game:GetService("Players")
+local Lighting = game:GetService("Lighting")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+
+local EnvironmentService = {}
+local isInitialized = false
+
+-- Erstellt eine brennende Feuerschale / Fackel mit flackerndem Licht & Partikeln
+function EnvironmentService.CreateBrazier(position: Vector3, parent: Instance): Model
+	local brazier = Instance.new("Model")
+	brazier.Name = "Brazier"
+	brazier.Parent = parent
+
+	-- Sockel (Antiker Schieferstein)
+	local stand = Instance.new("Part")
+	stand.Name = "Stand"
+	stand.Size = Vector3.new(2.2, 4.0, 2.2)
+	stand.Position = position + Vector3.new(0, 2.0, 0)
+	stand.Color = Color3.fromRGB(45, 50, 54)
+	stand.Material = Enum.Material.Slate
+	stand.Anchored = true
+	stand.CanCollide = true
+	stand.Parent = brazier
+
+	-- Schale (Dunkles Schmiedeeisen)
+	local bowl = Instance.new("Part")
+	bowl.Name = "Bowl"
+	bowl.Size = Vector3.new(3.2, 1.2, 3.2)
+	bowl.Position = position + Vector3.new(0, 4.4, 0)
+	bowl.Color = Color3.fromRGB(28, 30, 34)
+	bowl.Material = Enum.Material.CorrodedMetal
+	bowl.Anchored = true
+	bowl.CanCollide = true
+	bowl.Parent = brazier
+
+	-- Glühende Kohlen / Flammenkern
+	local fireCore = Instance.new("Part")
+	fireCore.Name = "FireCore"
+	fireCore.Size = Vector3.new(2.0, 0.4, 2.0)
+	fireCore.Position = position + Vector3.new(0, 4.9, 0)
+	fireCore.Color = Color3.fromRGB(255, 140, 25)
+	fireCore.Material = Enum.Material.Neon
+	fireCore.Anchored = true
+	fireCore.CanCollide = false
+	fireCore.Parent = brazier
+
+	-- Roblox Feuer-Effekt
+	local fire = Instance.new("Fire")
+	fire.Size = 4
+	fire.Heat = 5
+	fire.Color = Color3.fromRGB(255, 130, 30)
+	fire.SecondaryColor = Color3.fromRGB(255, 60, 10)
+	fire.Parent = fireCore
+
+	-- Warmes Umgebungslicht mit sanftem Flackern
+	local light = Instance.new("PointLight")
+	light.Name = "FireLight"
+	light.Color = Color3.fromRGB(255, 155, 45)
+	light.Range = 22
+	light.Brightness = 1.8
+	light.Shadows = true
+	light.Parent = fireCore
+
+	-- Flackern animieren
+	task.spawn(function()
+		while fireCore:IsDescendantOf(Workspace) do
+			light.Brightness = 1.6 + math.random() * 0.5
+			task.wait(0.08 + math.random() * 0.08)
+		end
+	end)
+
+	return brazier
+end
+
+-- Richtet die Nacht-Beleuchtung & Post-Processing-Effekte ein (wie im Pitch-Video)
+local function setupCinematicLighting()
+	Lighting.ClockTime = 0.5 -- Tiefe Mitternacht
+	Lighting.Brightness = 1.2
+	Lighting.Ambient = Color3.fromRGB(18, 22, 34)
+	Lighting.OutdoorAmbient = Color3.fromRGB(26, 32, 50)
+	Lighting.GlobalShadows = true
+	Lighting.ShadowSoftness = 0.2
+
+	-- 1. Bloom-Effekt (lässt Neon-Säure, Lila Kristall und Flammen strahlen)
+	local bloom = Lighting:FindFirstChild("CinematicBloom") :: BloomEffect?
+	if not bloom then
+		bloom = Instance.new("BloomEffect")
+		bloom.Name = "CinematicBloom"
+		bloom.Parent = Lighting
+	end
+	bloom.Threshold = 0.72
+	bloom.Intensity = 0.65
+	bloom.Size = 24
+
+	-- 2. ColorCorrection (Sattes Farb-Shading & Kontrast)
+	local cc = Lighting:FindFirstChild("CinematicColorCorrection") :: ColorCorrectionEffect?
+	if not cc then
+		cc = Instance.new("ColorCorrectionEffect")
+		cc.Name = "CinematicColorCorrection"
+		cc.Parent = Lighting
+	end
+	cc.Contrast = 0.16
+	cc.Saturation = 0.28
+	cc.Brightness = -0.02
+	cc.TintColor = Color3.fromRGB(255, 255, 255)
+
+	-- 3. Atmosphäre (Nebel & mystische Stimmung)
+	local atm = Lighting:FindFirstChild("CinematicAtmosphere") :: Atmosphere?
+	if not atm then
+		atm = Instance.new("Atmosphere")
+		atm.Name = "CinematicAtmosphere"
+		atm.Parent = Lighting
+	end
+	atm.Density = 0.32
+	atm.Offset = 0.25
+	atm.Color = Color3.fromRGB(28, 36, 52)
+	atm.Decay = Color3.fromRGB(15, 20, 30)
+	atm.Glare = 0.15
+	atm.Haze = 1.2
+
+	print("[EnvironmentService] Nacht-Lighting & Post-Processing aktiviert.")
+end
+
+-- Erstellt das schwebende Fels-Plateau unter den Plots inklusive zentraler Allee
+local function createMainPlateau(envFolder: Folder): Model
+	local plateauModel = Instance.new("Model")
+	plateauModel.Name = "MainCitadelPlateau"
+	plateauModel.Parent = envFolder
+
+	-- 1. Massiver Fels-Körper unter den Plots (Schwebende Felseninsel)
+	local rockBase = Instance.new("Part")
+	rockBase.Name = "RockBase"
+	rockBase.Size = Vector3.new(160, 8, 130)
+	rockBase.Position = Vector3.new(0, -4.0, 0)
+	rockBase.Color = Color3.fromRGB(38, 42, 46)
+	rockBase.Material = Enum.Material.Slate
+	rockBase.Anchored = true
+	rockBase.CanCollide = true
+	rockBase.Parent = plateauModel
+
+	-- 2. Zentrale Pflasterstein-Allee zwischen den Plot-Reihen (führt direkt zur Hängebrücke)
+	local mainAvenue = Instance.new("Part")
+	mainAvenue.Name = "MainAvenue"
+	mainAvenue.Size = Vector3.new(160, 0.4, 18)
+	mainAvenue.Position = Vector3.new(0, 0.2, 0)
+	mainAvenue.Color = Color3.fromRGB(56, 62, 70)
+	mainAvenue.Material = Enum.Material.Cobblestone
+	mainAvenue.Anchored = true
+	mainAvenue.CanCollide = true
+	mainAvenue.Parent = plateauModel
+
+	-- Fackeln entlang der zentralen Allee (West, Mitte, Ost)
+	local brazierOffsets = { -60, -20, 20, 60 }
+	for _, xOffset in brazierOffsets do
+		EnvironmentService.CreateBrazier(Vector3.new(xOffset, 0.2, -10), plateauModel)
+		EnvironmentService.CreateBrazier(Vector3.new(xOffset, 0.2, 10), plateauModel)
+	end
+
+	return plateauModel
+end
+
+-- Erstellt den giftgrünen Säure-Abgrund tief unter den Inseln & Brücken
+local function createToxicAcidLake(envFolder: Folder): Model
+	local acidModel = Instance.new("Model")
+	acidModel.Name = "ToxicAcidLake"
+	acidModel.Parent = envFolder
+
+	-- Haupt-Säurefläche (Leuchtendes Neongrün)
+	local acidTop = Instance.new("Part")
+	acidTop.Name = "AcidSurface"
+	acidTop.Size = Vector3.new(800, 4, 800)
+	acidTop.Position = Vector3.new(50, -22, 0)
+	acidTop.Color = Color3.fromRGB(48, 255, 32) -- Knalliges Giftgrün wie im Video
+	acidTop.Material = Enum.Material.Neon
+	acidTop.Transparency = 0.1
+	acidTop.Anchored = true
+	acidTop.CanCollide = false
+	acidTop.CastShadow = false
+	acidTop.Parent = acidModel
+
+	-- Dunklere Tiefenschicht darunter
+	local acidDeep = Instance.new("Part")
+	acidDeep.Name = "AcidDeep"
+	acidDeep.Size = Vector3.new(802, 8, 802)
+	acidDeep.Position = Vector3.new(50, -26, 0)
+	acidDeep.Color = Color3.fromRGB(15, 120, 10)
+	acidDeep.Material = Enum.Material.SmoothPlastic
+	acidDeep.Anchored = true
+	acidDeep.CanCollide = false
+	acidDeep.Parent = acidModel
+
+	-- Tödlicher Säure-Schaden bei Kontakt
+	local damageDebounce: { [Player]: number } = {}
+	acidTop.Touched:Connect(function(hit)
+		local char = hit.Parent
+		if not char then return end
+		local hum = char:FindFirstChild("Humanoid") :: Humanoid?
+		local player = Players:GetPlayerFromCharacter(char)
+		if hum and hum.Health > 0 and player then
+			local now = os.clock()
+			local lastHit = damageDebounce[player] or 0
+			if now - lastHit >= 0.8 then
+				damageDebounce[player] = now
+				hum:TakeDamage(25) -- 25 Schaden pro Sekunde in der Säure
+			end
+		end
+	end)
+
+	-- Aufsteigende giftige Dunstpartikel
+	local mistAtt = Instance.new("Attachment")
+	mistAtt.Name = "MistAtt"
+	mistAtt.Position = Vector3.new(0, 2, 0)
+	mistAtt.Parent = acidTop
+
+	local mist = Instance.new("ParticleEmitter")
+	mist.Name = "AcidMist"
+	mist.Rate = 35
+	mist.Lifetime = NumberRange.new(3.0, 5.5)
+	mist.Speed = NumberRange.new(2.0, 4.5)
+	mist.SpreadAngle = Vector2.new(45, 45)
+	mist.Size = NumberSequence.new{
+		NumberSequenceKeypoint.new(0, 1.5),
+		NumberSequenceKeypoint.new(0.5, 4.0),
+		NumberSequenceKeypoint.new(1, 6.0),
+	}
+	mist.Transparency = NumberSequence.new{
+		NumberSequenceKeypoint.new(0, 0.95),
+		NumberSequenceKeypoint.new(0.4, 0.75),
+		NumberSequenceKeypoint.new(1, 1.0),
+	}
+	mist.Color = ColorSequence.new(Color3.fromRGB(60, 255, 40))
+	mist.LightEmission = 0.6
+	mist.Parent = mistAtt
+
+	-- Sanftes neongrünes Umgebungslicht
+	local greenLight = Instance.new("PointLight")
+	greenLight.Name = "AcidGlow"
+	greenLight.Color = Color3.fromRGB(48, 255, 32)
+	greenLight.Range = 70
+	greenLight.Brightness = 2.2
+	greenLight.Shadows = false
+	greenLight.Parent = acidTop
+
+	return acidModel
+end
+
+-- Erstellt die monumentale Hängebrücke über die Säure (Verbindung zum Portal)
+local function createSuspensionBridge(envFolder: Folder): Model
+	local bridge = Instance.new("Model")
+	bridge.Name = "SuspensionBridge"
+	bridge.Parent = envFolder
+
+	local bridgeStart = Vector3.new(75, 0.5, 0) -- Östlicher Rand des Plot-Plateaus
+	local bridgeEnd = Vector3.new(135, 0.5, 0)  -- Westlicher Rand der Portal-Insel
+	local bridgeWidth = 14
+	local spanLength = (bridgeEnd.X - bridgeStart.X)
+	local midX = (bridgeStart.X + bridgeEnd.X) / 2
+
+	-- 1. Pylonen-Torbögen an beiden Enden (Massiver dunkler Schieferstein)
+	local function buildStoneArch(pos: Vector3, isWest: boolean)
+		local archModel = Instance.new("Model")
+		archModel.Name = if isWest then "PylonWest" else "PylonEast"
+		archModel.Parent = bridge
+
+		local pillarL = Instance.new("Part")
+		pillarL.Name = "PillarLeft"
+		pillarL.Size = Vector3.new(4, 22, 4)
+		pillarL.Position = pos + Vector3.new(0, 10, -bridgeWidth/2 - 1.5)
+		pillarL.Color = Color3.fromRGB(48, 54, 60)
+		pillarL.Material = Enum.Material.Slate
+		pillarL.Anchored = true
+		pillarL.CanCollide = true
+		pillarL.Parent = archModel
+
+		local pillarR = Instance.new("Part")
+		pillarR.Name = "PillarRight"
+		pillarR.Size = Vector3.new(4, 22, 4)
+		pillarR.Position = pos + Vector3.new(0, 10, bridgeWidth/2 + 1.5)
+		pillarR.Color = Color3.fromRGB(48, 54, 60)
+		pillarR.Material = Enum.Material.Slate
+		pillarR.Anchored = true
+		pillarR.CanCollide = true
+		pillarR.Parent = archModel
+
+		-- Oberer Querbalken / Torbogen
+		local crossBeam = Instance.new("Part")
+		crossBeam.Name = "CrossBeam"
+		crossBeam.Size = Vector3.new(5, 3.5, bridgeWidth + 8)
+		crossBeam.Position = pos + Vector3.new(0, 20.5, 0)
+		crossBeam.Color = Color3.fromRGB(38, 43, 48)
+		crossBeam.Material = Enum.Material.Slate
+		crossBeam.Anchored = true
+		crossBeam.CanCollide = true
+		crossBeam.Parent = archModel
+
+		-- Feuerschalen auf den Pylonen
+		EnvironmentService.CreateBrazier(pos + Vector3.new(0, 22, -bridgeWidth/2 - 1.5), archModel)
+		EnvironmentService.CreateBrazier(pos + Vector3.new(0, 22, bridgeWidth/2 + 1.5), archModel)
+	end
+
+	buildStoneArch(bridgeStart, true)
+	buildStoneArch(bridgeEnd, false)
+
+	-- 2. Brückendeck: Holzbohlen / Planken mit Fugen (Säure leuchtet hindurch)
+	local plankLength = 2.2
+	local plankCount = math.floor(spanLength / (plankLength + 0.4))
+	local stepX = spanLength / plankCount
+
+	for i = 0, plankCount do
+		local currentX = bridgeStart.X + (i * stepX)
+		-- Leichter natürlicher Hängebrücken-Durchhang in der Mitte
+		local sagY = -math.sin((i / plankCount) * math.pi) * 2.2
+
+		local plank = Instance.new("Part")
+		plank.Name = "Plank_" .. i
+		plank.Size = Vector3.new(plankLength, 1.0, bridgeWidth)
+		plank.Position = Vector3.new(currentX, 0.2 + sagY, 0)
+		plank.Color = Color3.fromRGB(68, 60, 52) -- Verwittertes Holz
+		plank.Material = Enum.Material.WoodPlanks
+		plank.Anchored = true
+		plank.CanCollide = true
+		plank.Parent = bridge
+
+		-- Vertikale Halteseile alle 2 Planken
+		if i % 2 == 0 then
+			for _, zSide in { -bridgeWidth/2 + 0.5, bridgeWidth/2 - 0.5 } do
+				local rope = Instance.new("Part")
+				rope.Name = "SuspensionRope"
+				rope.Size = Vector3.new(0.3, 4.2, 0.3)
+				rope.Position = Vector3.new(currentX, 2.3 + sagY, zSide)
+				rope.Color = Color3.fromRGB(30, 32, 35)
+				rope.Material = Enum.Material.CorrodedMetal
+				rope.Anchored = true
+				rope.CanCollide = false
+				rope.Parent = bridge
+			end
+		end
+	end
+
+	-- 3. Durchgehende Handläufe / Spannseile (Links & Rechts)
+	for _, zSide in { -bridgeWidth/2 + 0.5, bridgeWidth/2 - 0.5 } do
+		local handrail = Instance.new("Part")
+		handrail.Name = "Handrail"
+		handrail.Size = Vector3.new(spanLength, 0.6, 0.6)
+		handrail.Position = Vector3.new(midX, 4.0 - 1.1, zSide)
+		handrail.Color = Color3.fromRGB(40, 44, 48)
+		handrail.Material = Enum.Material.CorrodedMetal
+		handrail.Anchored = true
+		handrail.CanCollide = true
+		handrail.Parent = bridge
+	end
+
+	return bridge
+end
+
+-- Erstellt die schwebende Felseninsel für das Dimensions-Portal
+local function createPortalIsland(envFolder: Folder): Model
+	local islandModel = Instance.new("Model")
+	islandModel.Name = "PortalIsland"
+	islandModel.Parent = envFolder
+
+	-- Felsbasis unter der Portal-Plattform
+	local base = Instance.new("Part")
+	base.Name = "PortalIslandRock"
+	base.Size = Vector3.new(42, 8, 42)
+	base.Position = Vector3.new(154, -4.0, 0)
+	base.Color = Color3.fromRGB(38, 42, 46)
+	base.Material = Enum.Material.Slate
+	base.Anchored = true
+	base.CanCollide = true
+	base.Parent = islandModel
+
+	-- Pflasterstein-Vorplatz
+	local plaza = Instance.new("Part")
+	plaza.Name = "PortalIslandPlaza"
+	plaza.Size = Vector3.new(42, 0.8, 42)
+	plaza.Position = Vector3.new(154, 0.4, 0)
+	plaza.Color = Color3.fromRGB(52, 58, 66)
+	plaza.Material = Enum.Material.Cobblestone
+	plaza.Anchored = true
+	plaza.CanCollide = true
+	plaza.Parent = islandModel
+
+	-- Fackeln an den 4 Ecken des Vorplatzes
+	local cornerOffsets = {
+		Vector3.new(138, 0.4, -18),
+		Vector3.new(138, 0.4, 18),
+		Vector3.new(170, 0.4, -18),
+		Vector3.new(170, 0.4, 18),
+	}
+	for _, cPos in cornerOffsets do
+		EnvironmentService.CreateBrazier(cPos, islandModel)
+	end
+
+	return islandModel
+end
+
+-- Richtet die Fackeln und Monolithen in der Wald-Golem Boss-Arena ein
+local function setupBossArenaAtmosphere(envFolder: Folder)
+	local arena = Workspace:FindFirstChild("Arena_WaldRuinen")
+	if not arena then
+		return
+	end
+
+	-- Altes Deko-Setup aufräumen
+	local oldDeko = arena:FindFirstChild("ArenaAtmosphere")
+	if oldDeko then
+		oldDeko:Destroy()
+	end
+
+	local deko = Instance.new("Model")
+	deko.Name = "ArenaAtmosphere"
+	deko.Parent = arena
+
+	local ARENA_CENTER = Vector3.new(0, 500, 25000)
+	local ARENA_RADIUS = 54
+
+	-- 8 brennende Feuerschalen entlang des inneren Ringes der Boss-Arena
+	local brazierCount = 8
+	for i = 1, brazierCount do
+		local angle = (i / brazierCount) * math.pi * 2
+		local x = math.cos(angle) * ARENA_RADIUS
+		local z = math.sin(angle) * ARENA_RADIUS
+		EnvironmentService.CreateBrazier(ARENA_CENTER + Vector3.new(x, 1.5, z), deko)
+	end
+end
+
+-- Haupt-Initialisierung der gesamten Video-Welt
+function EnvironmentService.Init()
+	if isInitialized then
+		return
+	end
+	isInitialized = true
+
+	-- 1. Nacht-Lighting & Post-Processing
+	setupCinematicLighting()
+
+	-- Altes Environment aufräumen
+	local existingEnv = Workspace:FindFirstChild("Environment")
+	if existingEnv then
+		existingEnv:Destroy()
+	end
+
+	local envFolder = Instance.new("Folder")
+	envFolder.Name = "Environment"
+	envFolder.Parent = Workspace
+
+	-- 2. Haupt-Plateau unter den Plots mit Allee
+	createMainPlateau(envFolder)
+
+	-- 3. Schwebende Insel für das Portal
+	createPortalIsland(envFolder)
+
+	-- 4. Giftgrüner Säure-Abgrund unter allen Inseln
+	createToxicAcidLake(envFolder)
+
+	-- 5. Monumentale Hängebrücke zwischen Plots und Portal
+	createSuspensionBridge(envFolder)
+
+	-- 6. Fackeln in der Boss-Arena
+	setupBossArenaAtmosphere(envFolder)
+
+	print("[EnvironmentService] Video-Welt erfolgreich aufgebaut: Nacht-Lighting, Säure-Abgrund, Hängebrücke & Fackeln aktiv.")
+end
+
+-- Für die Studio-Befehlszeile (Baut die Welt direkt im Edit-Modus auf)
+function EnvironmentService.BuildInStudio()
+	isInitialized = false
+	EnvironmentService.Init()
+end
+
+return EnvironmentService

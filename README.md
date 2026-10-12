@@ -9,14 +9,14 @@
 
 Füge diese Befehle unten in die **Befehlszeile (Command Bar)** in Roblox Studio ein und drücke **Enter**, um die Welt direkt im **gestoppten Zustand (Edit-Modus)** aufzubauen:
 
-### 🏰 Inseln & 3D-Dungeon-Sockel aufbauen / aktualisieren:
+### 🌌 Komplette Video-Welt generieren (Hängebrücke + Säure-Abgrund + Nacht-Lighting + Plots + Tempel-Portale + Boss-Arena):
 ```lua
-workspace.Plots:Destroy(); require(game.ServerScriptService.Server.Services.PlotService).Init()
+pcall(function() workspace.Environment:Destroy() end); pcall(function() workspace.Plots:Destroy() end); require(game.ServerScriptService.Server.Services.EnvironmentService).Init(); require(game.ServerScriptService.Server.Services.PlotService).Init(); require(game.ServerScriptService.Server.Services.PortalService).Init(); require(game.ServerScriptService.Server.Services.BossService).Init()
 ```
 
-### 🌌 Alles auf einmal generieren (Plots + Portale + Boss-Arena):
+### 🌉 Nur Video-Umgebung aufbauen (Nacht-Lighting, Säuresee, Hängebrücke, Fackeln):
 ```lua
-workspace.Plots:Destroy(); require(game.ServerScriptService.Server.Services.PlotService).Init(); require(game.ServerScriptService.Server.Services.PortalService).Init(); require(game.ServerScriptService.Server.Services.BossService).Init()
+require(game.ServerScriptService.Server.Services.EnvironmentService).Init()
 ```
 
 > **Tipp:** Drücke nach dem Ausführen einfach **Strg + S**, um die generierten 3D-Objekte dauerhaft in deiner Roblox-Studio-Welt zu speichern.

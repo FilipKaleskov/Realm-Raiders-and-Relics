@@ -73,38 +73,58 @@ local function attachCarrierVisuals(player: Player, coreId: string)
 	-- 1. Restriktion: WalkSpeed drosseln
 	hum.WalkSpeed = 10
 
-	-- Kern-Optik
+	-- Kern-Optik (Im Video: Glühender violetter Kristall)
 	local bossInfo = BossConfig[coreId]
-	local coreColor = Color3.fromRGB(46, 204, 113) -- Wald-Golem Smaragd
+	local coreColor = Color3.fromRGB(180, 50, 255) -- Mystisches Amethyst-Lila wie im Video
 	local coreName = if bossInfo then bossInfo.DisplayName else coreId
 
-	-- 2. Schwebender Relikt-Kern
+	-- 2. Auf dem Rücken montierter, facettierter Kristall
 	local relic = Instance.new("Part")
 	relic.Name = "CarriedCoreRelic"
-	relic.Size = Vector3.new(2.2, 2.2, 2.2)
-	relic.CFrame = root.CFrame * CFrame.new(0, 3.2, 0.4)
+	relic.Size = Vector3.new(1.8, 2.6, 1.4)
+	relic.CFrame = root.CFrame * CFrame.new(0, 1.2, 1.1)
 	relic.Material = Enum.Material.Neon
 	relic.Color = coreColor
 	relic.CanCollide = false
 	relic.Anchored = false
 	relic.Parent = char
 
+	local relicMesh = Instance.new("SpecialMesh")
+	relicMesh.MeshType = Enum.MeshType.Brick
+	relicMesh.Scale = Vector3.new(1.0, 1.0, 1.0)
+	relicMesh.Parent = relic
+
 	local weld = Instance.new("WeldConstraint")
 	weld.Part0 = root
 	weld.Part1 = relic
 	weld.Parent = relic
 
-	local light = Instance.new("PointLight")
-	light.Color = coreColor
-	light.Range = 16
-	light.Brightness = 2.5
-	light.Parent = relic
+	local relicLight = Instance.new("PointLight")
+	relicLight.Color = coreColor
+	relicLight.Range = 18
+	relicLight.Brightness = 2.8
+	relicLight.Parent = relic
 
-	-- 3. Weithin sichtbarer roter Leuchtstrahl (Beacon) in den Himmel
+	-- Partikel-Aura um den getragenen Kristall
+	local relicAtt = Instance.new("Attachment")
+	relicAtt.Name = "RelicAtt"
+	relicAtt.Parent = relic
+
+	local relicParticles = Instance.new("ParticleEmitter")
+	relicParticles.Rate = 18
+	relicParticles.Lifetime = NumberRange.new(1.5, 2.5)
+	relicParticles.Speed = NumberRange.new(1.0, 2.5)
+	relicParticles.SpreadAngle = Vector2.new(180, 180)
+	relicParticles.Size = NumberSequence.new(0.6, 1.4)
+	relicParticles.Color = ColorSequence.new(Color3.fromRGB(215, 110, 255))
+	relicParticles.LightEmission = 1.0
+	relicParticles.Parent = relicAtt
+
+	-- 3. ZWEI parallele rote Himmels-Beams (Dual Sky Beacons wie im Pitch-Video!)
 	local skyAnchor = Instance.new("Part")
 	skyAnchor.Name = "BeaconSkyAnchor"
 	skyAnchor.Size = Vector3.new(1, 1, 1)
-	skyAnchor.CFrame = root.CFrame * CFrame.new(0, 220, 0)
+	skyAnchor.CFrame = root.CFrame * CFrame.new(0, 500, 0)
 	skyAnchor.Transparency = 1
 	skyAnchor.CanCollide = false
 	skyAnchor.Anchored = false
@@ -115,26 +135,37 @@ local function attachCarrierVisuals(player: Player, coreId: string)
 	skyWeld.Part1 = skyAnchor
 	skyWeld.Parent = skyAnchor
 
-	local att0 = Instance.new("Attachment")
-	att0.Name = "BeaconAttBottom"
-	att0.Position = Vector3.new(0, 2, 0)
-	att0.Parent = relic
+	for idx, xOffset in { -2.4, 2.4 } do
+		local attBottom = Instance.new("Attachment")
+		attBottom.Name = "BeaconAttBottom_" .. idx
+		attBottom.Position = Vector3.new(xOffset, 1.0, 0)
+		attBottom.Parent = relic
 
-	local att1 = Instance.new("Attachment")
-	att1.Name = "BeaconAttTop"
-	att1.Position = Vector3.new(0, 0, 0)
-	att1.Parent = skyAnchor
+		local attTop = Instance.new("Attachment")
+		attTop.Name = "BeaconAttTop_" .. idx
+		attTop.Position = Vector3.new(xOffset, 0, 0)
+		attTop.Parent = skyAnchor
 
-	local beam = Instance.new("Beam")
-	beam.Name = "TheftBeam"
-	beam.Attachment0 = att0
-	beam.Attachment1 = att1
-	beam.Color = ColorSequence.new(Color3.fromRGB(240, 45, 45))
-	beam.Width0 = 3.5
-	beam.Width1 = 3.5
-	beam.FaceCamera = true
-	beam.Transparency = NumberSequence.new(0.25)
-	beam.Parent = relic
+		local beam = Instance.new("Beam")
+		beam.Name = "TheftBeam_" .. idx
+		beam.Attachment0 = attBottom
+		beam.Attachment1 = attTop
+		beam.Color = ColorSequence.new(Color3.fromRGB(255, 30, 30))
+		beam.Width0 = 3.8
+		beam.Width1 = 3.8
+		beam.FaceCamera = true
+		beam.LightEmission = 1.0
+		beam.Transparency = NumberSequence.new(0.2)
+		beam.Parent = relic
+	end
+
+	-- Rotes Alarm-Licht um den Dieb
+	local redWarningLight = Instance.new("PointLight")
+	redWarningLight.Name = "RedTheftLight"
+	redWarningLight.Color = Color3.fromRGB(255, 30, 30)
+	redWarningLight.Range = 26
+	redWarningLight.Brightness = 2.6
+	redWarningLight.Parent = relic
 
 	-- 4. Rote Kontur / Highlight um den Dieb
 	local highlight = Instance.new("Highlight")

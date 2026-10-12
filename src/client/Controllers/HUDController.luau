@@ -4,6 +4,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 local StarterGui = game:GetService("StarterGui")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local Workspace = game:GetService("Workspace")
@@ -95,6 +96,13 @@ local detailIconStroke: UIStroke? = nil
 local detailStatsLabel: TextLabel? = nil
 local detailDescLabel: TextLabel? = nil
 local detailTipLabel: TextLabel? = nil
+
+-- 7. Gamepad Virtual Cursor & Interaktions-Registrierung
+local gamepadCursorFrame: Frame? = nil
+local gamepadCursorPos = Vector2.new(0, 0)
+local isGamepadCursorActive = false
+local hoveredInteractiveButton: GuiButton? = nil
+local registeredClickables: { [GuiButton]: () -> () } = {}
 
 -- Zustand
 local isInventoryOpen = false
@@ -201,6 +209,177 @@ local function updateInventoryBadge()
 		local count = getTotalItemCount()
 		invBadgeLabel.Text = tostring(count)
 		invBadgeLabel.Visible = count > 0
+	end
+end
+
+-- Erstellt den virtuellen Controller-Cursor (Check-UI Standard Reticle)
+local function ensureGamepadCursor(parentGui: ScreenGui)
+	if gamepadCursorFrame then
+		return
+	end
+
+	local cursor = Instance.new("Frame")
+	cursor.Name = "GamepadVirtualCursor"
+	cursor.Size = UDim2.new(0, 26, 0, 26)
+	cursor.AnchorPoint = Vector2.new(0.5, 0.5)
+	cursor.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	cursor.BackgroundTransparency = 0.82
+	cursor.ZIndex = 99999
+	cursor.Visible = false
+	cursor.Parent = parentGui
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(1, 0)
+	corner.Parent = cursor
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Name = "CursorRing"
+	stroke.Color = Color3.fromRGB(80, 220, 255)
+	stroke.Thickness = 2.4
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Parent = cursor
+
+	-- Zentrierter feiner Punkt
+	local dot = Instance.new("Frame")
+	dot.Name = "CursorDot"
+	dot.Size = UDim2.new(0, 6, 0, 6)
+	dot.AnchorPoint = Vector2.new(0.5, 0.5)
+	dot.Position = UDim2.new(0.5, 0, 0.5, 0)
+	dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	dot.ZIndex = 100000
+	dot.Parent = cursor
+
+	local dotCorner = Instance.new("UICorner")
+	dotCorner.CornerRadius = UDim.new(1, 0)
+	dotCorner.Parent = dot
+
+	gamepadCursorFrame = cursor
+end
+
+-- Aktualisiert den virtuellen Controller-Cursor jeden Frame (unterstützt rechten & linken Stick)
+local function updateGamepadCursor(dt: number)
+	if not isInventoryOpen or not gamepadCursorFrame then
+		return
+	end
+
+	local rightStick = Vector2.zero
+	local leftStick = Vector2.zero
+
+	-- Gamepad-Status abfragen (Thumbstick 2 = Rechter Stick, Thumbstick 1 = Linker Stick)
+	local states = UserInputService:GetGamepadState(Enum.UserInputType.Gamepad1)
+	for _, state in states do
+		if state.KeyCode == Enum.KeyCode.Thumbstick2 then
+			rightStick = Vector2.new(state.Position.X, state.Position.Y)
+		elseif state.KeyCode == Enum.KeyCode.Thumbstick1 then
+			leftStick = Vector2.new(state.Position.X, state.Position.Y)
+		end
+	end
+
+	-- Rechter Stick hat für den Cursor Priorität (wie vom User gewünscht), linker Stick funktioniert ebenfalls
+	local stickInput = Vector2.zero
+	if rightStick.Magnitude > 0.15 then
+		stickInput = rightStick
+	elseif leftStick.Magnitude > 0.15 then
+		stickInput = leftStick
+	end
+
+	if stickInput.Magnitude > 0.15 then
+		isGamepadCursorActive = true
+		gamepadCursorFrame.Visible = true
+
+		local inputMag = math.clamp(stickInput.Magnitude, 0, 1)
+		local speed = 950 * (inputMag ^ 1.35)
+		local dir = Vector2.new(stickInput.X, -stickInput.Y).Unit
+		gamepadCursorPos = gamepadCursorPos + (dir * speed * dt)
+
+		-- Innerhalb der Bildschirmgrenzen halten
+		local vp = if Camera then Camera.ViewportSize else Vector2.new(1920, 1080)
+		gamepadCursorPos = Vector2.new(
+			math.clamp(gamepadCursorPos.X, 12, vp.X - 12),
+			math.clamp(gamepadCursorPos.Y, 12, vp.Y - 12)
+		)
+		gamepadCursorFrame.Position = UDim2.fromOffset(gamepadCursorPos.X, gamepadCursorPos.Y)
+
+		-- Auto-Scrollen, wenn der Cursor oben/unten im Grid steht
+		if invGridFrame and invGridFrame.Visible and invModalFrame and invModalFrame.Visible then
+			local absPos = invGridFrame.AbsolutePosition
+			local absSize = invGridFrame.AbsoluteSize
+			if gamepadCursorPos.X >= absPos.X and gamepadCursorPos.X <= (absPos.X + absSize.X) then
+				if gamepadCursorPos.Y >= absPos.Y and gamepadCursorPos.Y <= (absPos.Y + 45) then
+					invGridFrame.CanvasPosition = Vector2.new(0, math.max(0, invGridFrame.CanvasPosition.Y - 480 * dt))
+				elseif gamepadCursorPos.Y >= (absPos.Y + absSize.Y - 45) and gamepadCursorPos.Y <= (absPos.Y + absSize.Y) then
+					invGridFrame.CanvasPosition = Vector2.new(0, invGridFrame.CanvasPosition.Y + 480 * dt)
+				end
+			end
+		end
+	end
+
+	-- Hover-Prüfung bei aktivem Cursor
+	if isGamepadCursorActive and gamepadCursorFrame.Visible then
+		local objects = PlayerGui:GetGuiObjectsAtPosition(math.floor(gamepadCursorPos.X), math.floor(gamepadCursorPos.Y))
+		local foundTarget: GuiButton? = nil
+
+		for _, obj in objects do
+			if obj ~= invBackdrop and (registeredClickables[obj :: any] ~= nil or obj:IsA("GuiButton")) then
+				foundTarget = obj :: GuiButton
+				break
+			end
+		end
+
+		local ring = gamepadCursorFrame:FindFirstChild("CursorRing") :: UIStroke?
+		if foundTarget then
+			if hoveredInteractiveButton ~= foundTarget then
+				hoveredInteractiveButton = foundTarget
+				if ring then
+					ring.Color = Color3.fromRGB(46, 204, 113) -- Grün bei interaktivem Ziel
+					ring.Thickness = 3.2
+				end
+				TweenService:Create(gamepadCursorFrame, TweenInfo.new(0.12), { Size = UDim2.new(0, 32, 0, 32) }):Play()
+			end
+		else
+			if hoveredInteractiveButton then
+				hoveredInteractiveButton = nil
+				if ring then
+					ring.Color = Color3.fromRGB(80, 220, 255) -- Cyan Standard
+					ring.Thickness = 2.4
+				end
+				TweenService:Create(gamepadCursorFrame, TweenInfo.new(0.12), { Size = UDim2.new(0, 26, 0, 26) }):Play()
+			end
+		end
+	end
+end
+
+-- Führt Klick-Aktion für den Controller aus (Button A oder R2)
+local function onGamepadClick()
+	if not isInventoryOpen or not isGamepadCursorActive or not gamepadCursorFrame or not gamepadCursorFrame.Visible then
+		return
+	end
+
+	-- Klick-Puls Animation
+	TweenService:Create(gamepadCursorFrame, TweenInfo.new(0.06), { Size = UDim2.new(0, 20, 0, 20) }):Play()
+	task.delay(0.08, function()
+		if gamepadCursorFrame then
+			local targetSize = if hoveredInteractiveButton then 32 else 26
+			TweenService:Create(gamepadCursorFrame, TweenInfo.new(0.1), { Size = UDim2.new(0, targetSize, 0, targetSize) }):Play()
+		end
+	end)
+
+	if hoveredInteractiveButton then
+		local action = registeredClickables[hoveredInteractiveButton]
+		if action then
+			action()
+			return
+		end
+
+		if hoveredInteractiveButton.Name == "CloseButton" then
+			if isDetailOpen then
+				HUDController.CloseItemDetails()
+			else
+				HUDController.CloseInventory()
+			end
+		elseif hoveredInteractiveButton.Name == "BottomCloseBtn" then
+			HUDController.CloseItemDetails()
+		end
 	end
 end
 
@@ -370,6 +549,10 @@ local function createItemCard(parent: Instance, itemId: string, count: number, _
 	hoverDetector.MouseButton1Click:Connect(function()
 		HUDController.ShowItemDetails(itemId, count, level)
 	end)
+
+	registeredClickables[hoverDetector] = function()
+		HUDController.ShowItemDetails(itemId, count, level)
+	end
 end
 
 -- Baut das Grid im Inventar neu auf basierend auf aktuellem Filter
@@ -381,6 +564,10 @@ local function rebuildInventoryList()
 	-- Vorherige Einträge löschen (außer Layout-Elemente)
 	for _, child in invGridFrame:GetChildren() do
 		if child:IsA("Frame") then
+			local det = child:FindFirstChild("HoverDetector") :: GuiButton?
+			if det then
+				registeredClickables[det] = nil
+			end
 			child:Destroy()
 		end
 	end
@@ -503,8 +690,32 @@ function HUDController.OpenInventory()
 	rebuildInventoryList()
 	updateInventoryBadge()
 
+	-- 1. Modal aktivieren & Maus in Egoperspektive / First-Person freigeben!
+	invBackdrop.Modal = true
 	invBackdrop.Visible = true
 	invModalFrame.Visible = true
+
+	UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+	UserInputService.MouseIconEnabled = true
+
+	-- 2. Gamepad-Cursor zentrieren & aktivieren falls Controller verwendet wird
+	local vp = if Camera then Camera.ViewportSize else Vector2.new(1920, 1080)
+	gamepadCursorPos = Vector2.new(vp.X / 2, vp.Y / 2)
+	if gamepadCursorFrame then
+		gamepadCursorFrame.Position = UDim2.fromOffset(gamepadCursorPos.X, gamepadCursorPos.Y)
+	end
+
+	local lastInput = UserInputService:GetLastInputType()
+	local isGamepad = (lastInput == Enum.UserInputType.Gamepad1
+		or lastInput == Enum.UserInputType.Gamepad2
+		or lastInput == Enum.UserInputType.Gamepad3
+		or lastInput == Enum.UserInputType.Gamepad4)
+	if isGamepad then
+		isGamepadCursorActive = true
+		if gamepadCursorFrame then
+			gamepadCursorFrame.Visible = true
+		end
+	end
 
 	local windowScale = invModalFrame:FindFirstChild("WindowScale") :: UIScale?
 	local targetScale = CheckUIController.getDeviceScale()
@@ -523,6 +734,12 @@ function HUDController.CloseInventory()
 	end
 	isInventoryOpen = false
 	HUDController.CloseItemDetails()
+
+	invBackdrop.Modal = false
+	isGamepadCursorActive = false
+	if gamepadCursorFrame then
+		gamepadCursorFrame.Visible = false
+	end
 
 	local windowScale = invModalFrame:FindFirstChild("WindowScale") :: UIScale?
 	local targetScale = CheckUIController.getDeviceScale()
@@ -654,6 +871,8 @@ local function createHUD()
 	gui.IgnoreGuiInset = true
 	gui.Parent = PlayerGui
 	screenGui = gui
+
+	ensureGamepadCursor(gui)
 
 	-- ----------------------------------------------------
 	-- 1. BOSS HEALTH BAR (Oben zentriert)
@@ -1128,6 +1347,7 @@ local function createHUD()
 	backdrop.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 	backdrop.BackgroundTransparency = 0.55
 	backdrop.Text = ""
+	backdrop.Modal = true -- Gibt die Maus in der Egoperspektive (First-Person) frei
 	backdrop.Visible = false
 	backdrop.ZIndex = 10
 	backdrop.Parent = gui
@@ -1199,6 +1419,9 @@ local function createHUD()
 		closeBtn.MouseButton1Click:Connect(function()
 			HUDController.CloseInventory()
 		end)
+		registeredClickables[closeBtn] = function()
+			HUDController.CloseInventory()
+		end
 	end
 
 	-- Hotkey-Hinweis zum Schließen
@@ -1255,6 +1478,9 @@ local function createHUD()
 	lbBtn.MouseButton1Click:Connect(function()
 		switchCategoryTab(-1)
 	end)
+	registeredClickables[lbBtn] = function()
+		switchCategoryTab(-1)
+	end
 
 	-- Tabs Container
 	local tabsContainer = Instance.new("Frame")
@@ -1301,6 +1527,9 @@ local function createHUD()
 		tabBtn.MouseButton1Click:Connect(function()
 			setCategory(catData.Id)
 		end)
+		registeredClickables[tabBtn] = function()
+			setCategory(catData.Id)
+		end
 
 		invCategoryTabs[catData.Id] = tabBtn
 	end
@@ -1333,6 +1562,9 @@ local function createHUD()
 	rbBtn.MouseButton1Click:Connect(function()
 		switchCategoryTab(1)
 	end)
+	registeredClickables[rbBtn] = function()
+		switchCategoryTab(1)
+	end
 
 	-- Scrolling Grid Container
 	local scrollFrame = Instance.new("ScrollingFrame")
@@ -1454,6 +1686,9 @@ local function createHUD()
 		dCloseBtn.MouseButton1Click:Connect(function()
 			HUDController.CloseItemDetails()
 		end)
+		registeredClickables[dCloseBtn] = function()
+			HUDController.CloseItemDetails()
+		end
 	end
 
 	-- Subheader Infozeile (Icon, Name, Seltenheit)
@@ -1709,6 +1944,9 @@ local function createHUD()
 	dBottomClose.MouseButton1Click:Connect(function()
 		HUDController.CloseItemDetails()
 	end)
+	registeredClickables[dBottomClose] = function()
+		HUDController.CloseItemDetails()
+	end
 
 	-- ----------------------------------------------------
 	-- 7. TOAST-BENACHRICHTIGUNGEN (Oben zentriert)
@@ -2055,6 +2293,25 @@ function HUDController.Init()
 
 		-- Wenn das Inventar geöffnet ist:
 		if isInventoryOpen then
+			-- Gamepad A-Taste oder R2-Trigger zum Klicken unter dem virtuellen Cursor
+			if code == Enum.KeyCode.ButtonA or code == Enum.KeyCode.ButtonR2 then
+				if isGamepadCursorActive and hoveredInteractiveButton then
+					onGamepadClick()
+					return
+				end
+			end
+
+			-- DPad-Steuerung zum Scrollen der Inventarliste
+			if code == Enum.KeyCode.DPadDown then
+				if invGridFrame then
+					invGridFrame.CanvasPosition = invGridFrame.CanvasPosition + Vector2.new(0, 75)
+				end
+			elseif code == Enum.KeyCode.DPadUp then
+				if invGridFrame then
+					invGridFrame.CanvasPosition = Vector2.new(0, math.max(0, invGridFrame.CanvasPosition.Y - 75))
+				end
+			end
+
 			-- Wenn Item-Detail-Infobox offen ist, schließe zuerst diese
 			if isDetailOpen then
 				if code == Enum.KeyCode.Escape or code == Enum.KeyCode.ButtonB or code == Enum.KeyCode.ButtonX then
@@ -2079,6 +2336,19 @@ function HUDController.Init()
 			end
 		end
 	end)
+
+	-- Mausbewegung schaltet Gamepad-Cursor aus
+	UserInputService.InputChanged:Connect(function(input: InputObject)
+		if input.UserInputType == Enum.UserInputType.MouseMovement then
+			if isGamepadCursorActive and gamepadCursorFrame then
+				isGamepadCursorActive = false
+				gamepadCursorFrame.Visible = false
+			end
+		end
+	end)
+
+	-- RenderStepped für flüssigen Gamepad-Cursor (Rechter & Linker Thumbstick)
+	RunService.RenderStepped:Connect(updateGamepadCursor)
 
 	-- Server-Events verbinden
 	GoldUpdated.OnClientEvent:Connect(function(newGold: number, currentCPS: number?)

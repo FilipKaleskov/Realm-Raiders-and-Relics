@@ -11,6 +11,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local ConfigFolder = Shared:WaitForChild("Config")
 local BossConfigModule = ConfigFolder:WaitForChild("BossConfig") :: ModuleScript
 local BossConfig = require(BossConfigModule)
+local ItemConfigModule = ConfigFolder:WaitForChild("ItemConfig") :: ModuleScript
+local ItemConfig = require(ItemConfigModule)
 
 local EventsFolder = Shared:WaitForChild("Events")
 
@@ -247,9 +249,14 @@ local function spawnGolemModel(): Model
 	nameLabel.BackgroundTransparency = 1
 	nameLabel.Text = "👹 Wald-Golem (Tier 1)"
 	nameLabel.TextColor3 = Color3.fromRGB(255, 230, 100)
-	nameLabel.Font = Enum.Font.GothamBold
+	nameLabel.Font = Enum.Font.GothamBlack
 	nameLabel.TextSize = 14
 	nameLabel.Parent = billboard
+
+	local nameStroke = Instance.new("UIStroke")
+	nameStroke.Color = Color3.fromRGB(0, 0, 0)
+	nameStroke.Thickness = 2.4
+	nameStroke.Parent = nameLabel
 
 	local hpLabel = Instance.new("TextLabel")
 	hpLabel.Name = "HPText"
@@ -257,9 +264,14 @@ local function spawnGolemModel(): Model
 	hpLabel.BackgroundTransparency = 1
 	hpLabel.Text = string.format("%d / %d HP", humanoid.Health, humanoid.MaxHealth)
 	hpLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-	hpLabel.Font = Enum.Font.GothamBold
+	hpLabel.Font = Enum.Font.GothamBlack
 	hpLabel.TextSize = 11
 	hpLabel.Parent = barBg
+
+	local hpStroke = Instance.new("UIStroke")
+	hpStroke.Color = Color3.fromRGB(0, 0, 0)
+	hpStroke.Thickness = 2.0
+	hpStroke.Parent = hpLabel
 
 	currentBossModel = model
 	currentBossHumanoid = humanoid
@@ -489,8 +501,14 @@ local function setupAttackHandler()
 			return
 		end
 
-		-- Schaden austeilen (Rostiges Schwert = 25 Schaden)
-		local weaponDamage = 25
+		-- Schaden austeilen (basierend auf der Waffe des Spielers im Inventar)
+		local playerData = DataManager.Get(player)
+		local weaponId = if playerData and playerData.Inventory and playerData.Inventory.Weapons and playerData.Inventory.Weapons[1]
+			then playerData.Inventory.Weapons[1]
+			else "RustySword"
+		local itemConfig = ItemConfig[weaponId]
+		local weaponDamage = if itemConfig and itemConfig.Damage then itemConfig.Damage else 25
+
 		currentBossHumanoid.Health = math.max(0, currentBossHumanoid.Health - weaponDamage)
 
 		showDamageNumber(bossRoot.Position, weaponDamage)
@@ -512,6 +530,11 @@ function BossService.Init()
 	spawnGolemModel()
 	setupAttackHandler()
 	startBossAILoop()
+
+	-- Bereinigung von Cooldown-Einträgen bei Verlassen des Spielers (SE-4 Memory Leak Schutz)
+	Players.PlayerRemoving:Connect(function(player: Player)
+		playerAttackCooldowns[player] = nil
+	end)
 
 	print("[BossService] Wald-Golem und PvE-System erfolgreich initialisiert.")
 end

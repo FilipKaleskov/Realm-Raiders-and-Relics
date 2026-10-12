@@ -65,16 +65,21 @@ local function createBillboard(parent: Instance, text: string, offset: Vector3):
 	local label = Instance.new("TextLabel")
 	label.Name = "Label"
 	label.Size = UDim2.new(1, 0, 1, 0)
-	label.BackgroundTransparency = 0.3
-	label.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
-	label.TextColor3 = Color3.fromRGB(240, 240, 240)
-	label.Font = Enum.Font.GothamBold
+	label.BackgroundTransparency = 0.2
+	label.BackgroundColor3 = Color3.fromRGB(24, 30, 34)
+	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.Font = Enum.Font.GothamBlack
 	label.TextScaled = true
 	label.Text = text
 	label.Parent = billboard
 
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(0, 0, 0)
+	stroke.Thickness = 2.4
+	stroke.Parent = label
+
 	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 8)
+	corner.CornerRadius = UDim.new(0, 6)
 	corner.Parent = label
 
 	return billboard

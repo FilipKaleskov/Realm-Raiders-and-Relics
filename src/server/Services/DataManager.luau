@@ -253,6 +253,14 @@ function DataManager.UpgradeSlot(player: Player, slotIndex: number, cost: number
 	return true
 end
 
+local requestInventoryCooldowns: { [Player]: number } = {}
+
+-- Intern: Wenn ein Spieler den Server verlässt (mit Cooldown-Bereinigung)
+local function handlePlayerRemoving(player: Player)
+	requestInventoryCooldowns[player] = nil
+	onPlayerRemoving(player)
+end
+
 -- Initialisiert den DataManager und bindet die Player-Events an
 function DataManager.Init()
 	if isInitialized then
@@ -265,11 +273,44 @@ function DataManager.Init()
 	end
 
 	Players.PlayerAdded:Connect(onPlayerAdded)
-	Players.PlayerRemoving:Connect(onPlayerRemoving)
+	Players.PlayerRemoving:Connect(handlePlayerRemoving)
 
-	-- Client-Anfrage für sofortigen Inventar-Sync
+	-- Client-Anfrage für Inventar-Sync mit Rate-Limiting (SE-5 Schutz vor Flooding)
 	RequestInventoryEvent.OnServerEvent:Connect(function(player: Player)
+		local now = os.clock()
+		local lastReq = requestInventoryCooldowns[player] or 0
+		if now - lastReq < 0.5 then
+			return
+		end
+		requestInventoryCooldowns[player] = now
 		DataManager.SyncInventory(player)
+	end)
+
+	-- Server-Shutdown Absicherung (SE-6: BindToClose Timeout - paralleles Freigeben aller Profile)
+	game:BindToClose(function()
+		local activePlayers = Players:GetPlayers()
+		if #activePlayers == 0 then
+			return
+		end
+
+		local completed = 0
+		local total = #activePlayers
+		for _, player in activePlayers do
+			task.spawn(function()
+				local profile = Profiles[player]
+				if profile ~= nil then
+					profile:Release()
+					Profiles[player] = nil
+				end
+				completed += 1
+			end)
+		end
+
+		local deadline = os.clock() + 15
+		while completed < total and os.clock() < deadline do
+			task.wait(0.1)
+		end
+		print(string.format("[DataManager] BindToClose abgeschlossen: %d/%d Profile freigegeben.", completed, total))
 	end)
 
 	print("[DataManager] Initialisiert und an Players gebunden.")

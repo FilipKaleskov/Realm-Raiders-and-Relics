@@ -97,6 +97,7 @@ local detailIconStroke: UIStroke? = nil
 local detailStatsLabel: TextLabel? = nil
 local detailDescLabel: TextLabel? = nil
 local detailTipLabel: TextLabel? = nil
+local detailCloseBtnLabel: TextLabel? = nil
 
 -- 7. Gamepad Virtual Cursor & Interaktions-Registrierung
 local gamepadCursorFrame: Frame? = nil
@@ -174,12 +175,21 @@ local function updateHotkeyLabel(lastInputType: Enum.UserInputType)
 		or lastInputType == Enum.UserInputType.Gamepad3
 		or lastInputType == Enum.UserInputType.Gamepad4)
 
+	if isInventoryOpen then
+		-- Auf Controller Crosshair/Roblox-Mauszeiger im Inventar ausblenden
+		UserInputService.MouseIconEnabled = not isGamepad
+	end
+
 	if invBtnTitleLabel then
 		invBtnTitleLabel.Text = if isGamepad then "Inventar  [Y]" else "Inventar  [E]"
 	end
 
 	if invCloseHintLabel then
 		invCloseHintLabel.Text = if isGamepad then "[B] Schließen" else "[E] Schließen"
+	end
+
+	if detailCloseBtnLabel then
+		detailCloseBtnLabel.Text = if isGamepad then "SCHLIESSEN  [B]" else "SCHLIESSEN  [X]"
 	end
 
 	if lbTabButton and rbTabButton then
@@ -316,6 +326,39 @@ local function ensureGamepadCursor(parentGui: ScreenGui)
 	gamepadCursorFrame = cursor
 end
 
+-- Ermittelt das anklickbare UI-Element an einer Bildschirmkoordinate
+-- Findet direkte Registrierungen, HoverDetectoren ganzer Item-Karten und Standard-Buttons
+local function resolveClickableTarget(x: number, y: number): (GuiButton?, (() -> ())?)
+	local objects = PlayerGui:GetGuiObjectsAtPosition(x, y)
+	for _, obj in objects do
+		if obj == invBackdrop or obj == gamepadCursorFrame or (gamepadCursorFrame and obj:IsDescendantOf(gamepadCursorFrame)) then
+			continue
+		end
+
+		-- 1. Ist das Objekt direkt in registeredClickables registriert?
+		if registeredClickables[obj :: any] ~= nil then
+			return obj :: GuiButton, registeredClickables[obj :: any]
+		end
+
+		-- 2. Wenn der Cursor auf einem Element innerhalb einer Item-Karte liegt (Icon, Text, Rahmen):
+		-- Finde den HoverDetector der übergeordneten Karte
+		local ancestor: Instance? = obj
+		while ancestor and ancestor ~= invGridFrame and ancestor ~= invModalFrame and ancestor ~= screenGui do
+			local det = ancestor:FindFirstChild("HoverDetector")
+			if det and det:IsA("GuiButton") and registeredClickables[det] then
+				return det, registeredClickables[det]
+			end
+			ancestor = ancestor.Parent
+		end
+
+		-- 3. Sonstige allgemeine GuiButtons (z.B. CloseButton, TabButtons)
+		if obj:IsA("GuiButton") then
+			return obj, registeredClickables[obj]
+		end
+	end
+	return nil, nil
+end
+
 -- Aktualisiert den virtuellen Controller-Cursor jeden Frame (unterstützt rechten & linken Stick)
 local function updateGamepadCursor(dt: number)
 	if not isInventoryOpen or not gamepadCursorFrame then
@@ -346,6 +389,7 @@ local function updateGamepadCursor(dt: number)
 	if stickInput.Magnitude > 0.15 then
 		isGamepadCursorActive = true
 		gamepadCursorFrame.Visible = true
+		UserInputService.MouseIconEnabled = false -- Auf Controller Crosshair ausblenden
 
 		local inputMag = math.clamp(stickInput.Magnitude, 0, 1)
 		local speed = 950 * (inputMag ^ 1.35)
@@ -376,20 +420,41 @@ local function updateGamepadCursor(dt: number)
 
 	-- Hover-Prüfung bei aktivem Cursor
 	if isGamepadCursorActive and gamepadCursorFrame.Visible then
-		local objects = PlayerGui:GetGuiObjectsAtPosition(math.floor(gamepadCursorPos.X), math.floor(gamepadCursorPos.Y))
-		local foundTarget: GuiButton? = nil
-
-		for _, obj in objects do
-			if obj ~= invBackdrop and (registeredClickables[obj :: any] ~= nil or obj:IsA("GuiButton")) then
-				foundTarget = obj :: GuiButton
-				break
-			end
-		end
+		local foundTarget, _ = resolveClickableTarget(math.floor(gamepadCursorPos.X), math.floor(gamepadCursorPos.Y))
 
 		local ring = gamepadCursorFrame:FindFirstChild("CursorRing") :: UIStroke?
 		if foundTarget then
 			if hoveredInteractiveButton ~= foundTarget then
+				-- Vorherige Karte visuell zurücksetzen, falls wir von einer anderen kamen
+				if hoveredInteractiveButton and hoveredInteractiveButton.Name == "HoverDetector" then
+					local prevCard = hoveredInteractiveButton.Parent :: Frame?
+					if prevCard and prevCard:IsA("Frame") then
+						local stroke = prevCard:FindFirstChildOfClass("UIStroke")
+						TweenService:Create(prevCard, TweenInfo.new(0.12), {
+							BackgroundColor3 = CheckUITheme.Colors.CardBackground,
+						}):Play()
+						if stroke then
+							TweenService:Create(stroke, TweenInfo.new(0.12), { Thickness = 1.6 }):Play()
+						end
+					end
+				end
+
 				hoveredInteractiveButton = foundTarget
+
+				-- Neue Karte mit Hover-Farbe & dickerem Rahmen hervorheben
+				if foundTarget.Name == "HoverDetector" then
+					local card = foundTarget.Parent :: Frame?
+					if card and card:IsA("Frame") then
+						local stroke = card:FindFirstChildOfClass("UIStroke")
+						TweenService:Create(card, TweenInfo.new(0.12), {
+							BackgroundColor3 = Color3.fromRGB(36, 60, 72),
+						}):Play()
+						if stroke then
+							TweenService:Create(stroke, TweenInfo.new(0.12), { Thickness = 2.2 }):Play()
+						end
+					end
+				end
+
 				if ring then
 					ring.Color = Color3.fromRGB(46, 204, 113) -- Grün bei interaktivem Ziel
 					ring.Thickness = 3.2
@@ -398,6 +463,19 @@ local function updateGamepadCursor(dt: number)
 			end
 		else
 			if hoveredInteractiveButton then
+				if hoveredInteractiveButton.Name == "HoverDetector" then
+					local prevCard = hoveredInteractiveButton.Parent :: Frame?
+					if prevCard and prevCard:IsA("Frame") then
+						local stroke = prevCard:FindFirstChildOfClass("UIStroke")
+						TweenService:Create(prevCard, TweenInfo.new(0.12), {
+							BackgroundColor3 = CheckUITheme.Colors.CardBackground,
+						}):Play()
+						if stroke then
+							TweenService:Create(stroke, TweenInfo.new(0.12), { Thickness = 1.6 }):Play()
+						end
+					end
+				end
+
 				hoveredInteractiveButton = nil
 				if ring then
 					ring.Color = Color3.fromRGB(80, 220, 255) -- Cyan Standard
@@ -409,35 +487,55 @@ local function updateGamepadCursor(dt: number)
 	end
 end
 
--- Führt Klick-Aktion für den Controller aus (Button A oder R2)
+-- Führt Klick-Aktion für den Controller aus (Button A, Button X oder R2)
 local function onGamepadClick()
-	if not isInventoryOpen or not isGamepadCursorActive or not gamepadCursorFrame or not gamepadCursorFrame.Visible then
+	if not isInventoryOpen then
 		return
 	end
 
-	-- Klick-Puls Animation
-	TweenService:Create(gamepadCursorFrame, TweenInfo.new(0.06), { Size = UDim2.new(0, 20, 0, 20) }):Play()
-	task.delay(0.08, function()
-		if gamepadCursorFrame then
-			local targetSize = if hoveredInteractiveButton then 32 else 26
-			TweenService:Create(gamepadCursorFrame, TweenInfo.new(0.1), { Size = UDim2.new(0, targetSize, 0, targetSize) }):Play()
-		end
-	end)
+	-- Falls der Cursor noch nicht sichtbar war, jetzt anzeigen
+	isGamepadCursorActive = true
+	if gamepadCursorFrame then
+		gamepadCursorFrame.Visible = true
+	end
+	UserInputService.MouseIconEnabled = false -- Auf Controller Crosshair ausblenden
 
-	if hoveredInteractiveButton then
-		local action = registeredClickables[hoveredInteractiveButton]
-		if action then
-			action()
+	-- Klick-Puls Animation
+	if gamepadCursorFrame then
+		TweenService:Create(gamepadCursorFrame, TweenInfo.new(0.06), { Size = UDim2.new(0, 20, 0, 20) }):Play()
+		task.delay(0.08, function()
+			if gamepadCursorFrame then
+				local targetSize = if hoveredInteractiveButton then 32 else 26
+				TweenService:Create(gamepadCursorFrame, TweenInfo.new(0.1), { Size = UDim2.new(0, targetSize, 0, targetSize) }):Play()
+			end
+		end)
+	end
+
+	-- Ziel ermitteln: Entweder gecachtes hoveredInteractiveButton ODER Live-Auflösung an Cursor-Position
+	local targetButton = hoveredInteractiveButton
+	local targetAction = if targetButton then registeredClickables[targetButton] else nil
+
+	if not targetButton or not targetAction then
+		local foundBtn, foundAction = resolveClickableTarget(math.floor(gamepadCursorPos.X), math.floor(gamepadCursorPos.Y))
+		if foundBtn then
+			targetButton = foundBtn
+			targetAction = foundAction
+		end
+	end
+
+	if targetButton then
+		if targetAction then
+			targetAction()
 			return
 		end
 
-		if hoveredInteractiveButton.Name == "CloseButton" then
+		if targetButton.Name == "CloseButton" then
 			if isDetailOpen then
 				HUDController.CloseItemDetails()
 			else
 				HUDController.CloseInventory()
 			end
-		elseif hoveredInteractiveButton.Name == "BottomCloseBtn" then
+		elseif targetButton.Name == "BottomCloseBtn" then
 			HUDController.CloseItemDetails()
 		end
 	end
@@ -759,7 +857,6 @@ function HUDController.OpenInventory()
 	invModalFrame.Visible = true
 
 	UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-	UserInputService.MouseIconEnabled = true
 
 	-- 2. Gamepad-Cursor zentrieren & aktivieren falls Controller verwendet wird
 	local vp = if Camera then Camera.ViewportSize else Vector2.new(1920, 1080)
@@ -773,6 +870,10 @@ function HUDController.OpenInventory()
 		or lastInput == Enum.UserInputType.Gamepad2
 		or lastInput == Enum.UserInputType.Gamepad3
 		or lastInput == Enum.UserInputType.Gamepad4)
+
+	-- Crosshair / Roblox-Mauscursor auf Controller ausblenden (nur auf PC/Maus anzeigen)
+	UserInputService.MouseIconEnabled = not isGamepad
+
 	if isGamepad then
 		isGamepadCursorActive = true
 		if gamepadCursorFrame then
@@ -806,6 +907,8 @@ function HUDController.CloseInventory()
 	if gamepadCursorFrame then
 		gamepadCursorFrame.Visible = false
 	end
+	-- Standard-Mausicon für normales Gameplay wiederherstellen
+	UserInputService.MouseIconEnabled = true
 
 	local windowScale = invModalFrame:FindFirstChild("WindowScale") :: UIScale?
 	local targetScale = CheckUIController.getDeviceScale()
@@ -2017,6 +2120,7 @@ local function createHUD()
 	closeBtnLabel.ZIndex = 29
 	closeBtnLabel.Parent = dBottomClose
 	addCheckUIStroke(closeBtnLabel, 2.6)
+	detailCloseBtnLabel = closeBtnLabel
 
 	local closeBtnScale = Instance.new("UIScale")
 	closeBtnScale.Name = "ButtonScale"
@@ -2353,13 +2457,59 @@ function HUDController.Init()
 		end)
 	end)
 
-	-- Tastenkombinationen für PC (E, Tab, B, I) und Konsole / Gamepad (ButtonY, DPadUp, ButtonSelect)
+	-- Tastenkombinationen für PC (E, Tab, B, I) und Konsole / Gamepad (ButtonA, ButtonX, ButtonB, ButtonY, DPad, etc.)
 	UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
+		local code = input.KeyCode
+
+		-- Wenn das Inventar geöffnet ist:
+		-- (Wichtig: Vor 'if gameProcessed' prüfen, da freezeControls ButtonA per ContextActionService sinkt!)
+		if isInventoryOpen then
+			-- 1. Klick auf Items / Buttons mit Button A (Xbox A / PS Cross), Button X (Xbox X / PS Square) oder R2
+			if code == Enum.KeyCode.ButtonA or code == Enum.KeyCode.ButtonX or code == Enum.KeyCode.ButtonR2 then
+				onGamepadClick()
+				return
+			end
+
+			-- 2. DPad-Steuerung zum Scrollen der Inventarliste
+			if code == Enum.KeyCode.DPadDown then
+				if invGridFrame then
+					invGridFrame.CanvasPosition = invGridFrame.CanvasPosition + Vector2.new(0, 75)
+				end
+				return
+			elseif code == Enum.KeyCode.DPadUp then
+				if invGridFrame then
+					invGridFrame.CanvasPosition = Vector2.new(0, math.max(0, invGridFrame.CanvasPosition.Y - 75))
+				end
+				return
+			end
+
+			-- 3. Wenn Item-Detail-Infobox offen ist, schließe diese mit B, Y oder Escape
+			if isDetailOpen then
+				if code == Enum.KeyCode.Escape or code == Enum.KeyCode.ButtonB or code == Enum.KeyCode.ButtonY then
+					HUDController.CloseItemDetails()
+					return
+				end
+			end
+
+			-- 4. Controller Tab-Wechsel mit LB/RB bzw. L1/R1
+			if code == Enum.KeyCode.ButtonL1 then
+				switchCategoryTab(-1)
+				return
+			elseif code == Enum.KeyCode.ButtonR1 then
+				switchCategoryTab(1)
+				return
+			end
+
+			-- 5. Schließen mit Escape (PC), ButtonB (Xbox B / PS Kreis), ButtonY (Xbox Y / PS Dreieck) oder ButtonSelect
+			if code == Enum.KeyCode.Escape or code == Enum.KeyCode.ButtonB or code == Enum.KeyCode.ButtonY or code == Enum.KeyCode.ButtonSelect then
+				HUDController.CloseInventory()
+				return
+			end
+		end
+
 		if gameProcessed then
 			return
 		end
-
-		local code = input.KeyCode
 
 		-- PC: [E] (Minecraft-Style / RPG-Standard), [Tab], [B], [I]
 		local isPCInventoryKey = (code == Enum.KeyCode.E or code == Enum.KeyCode.Tab or code == Enum.KeyCode.B or code == Enum.KeyCode.I)
@@ -2374,56 +2524,14 @@ function HUDController.Init()
 			HUDController.ToggleInventory()
 			return
 		end
-
-		-- Wenn das Inventar geöffnet ist:
-		if isInventoryOpen then
-			-- Gamepad A-Taste oder R2-Trigger zum Klicken unter dem virtuellen Cursor
-			if code == Enum.KeyCode.ButtonA or code == Enum.KeyCode.ButtonR2 then
-				if isGamepadCursorActive and hoveredInteractiveButton then
-					onGamepadClick()
-					return
-				end
-			end
-
-			-- DPad-Steuerung zum Scrollen der Inventarliste
-			if code == Enum.KeyCode.DPadDown then
-				if invGridFrame then
-					invGridFrame.CanvasPosition = invGridFrame.CanvasPosition + Vector2.new(0, 75)
-				end
-			elseif code == Enum.KeyCode.DPadUp then
-				if invGridFrame then
-					invGridFrame.CanvasPosition = Vector2.new(0, math.max(0, invGridFrame.CanvasPosition.Y - 75))
-				end
-			end
-
-			-- Wenn Item-Detail-Infobox offen ist, schließe zuerst diese
-			if isDetailOpen then
-				if code == Enum.KeyCode.Escape or code == Enum.KeyCode.ButtonB or code == Enum.KeyCode.ButtonX then
-					HUDController.CloseItemDetails()
-					return
-				end
-			end
-
-			-- Controller Tab-Wechsel mit LB/RB bzw. L1/R1
-			if code == Enum.KeyCode.ButtonL1 then
-				switchCategoryTab(-1)
-				return
-			elseif code == Enum.KeyCode.ButtonR1 then
-				switchCategoryTab(1)
-				return
-			end
-
-			-- Schließen mit Escape (PC) oder ButtonB (Xbox B / PlayStation Kreis)
-			if code == Enum.KeyCode.Escape or code == Enum.KeyCode.ButtonB then
-				HUDController.CloseInventory()
-				return
-			end
-		end
 	end)
 
-	-- Mausbewegung schaltet Gamepad-Cursor aus
+	-- Mausbewegung schaltet Gamepad-Cursor aus und aktiviert PC-Mauscursor
 	UserInputService.InputChanged:Connect(function(input: InputObject)
 		if input.UserInputType == Enum.UserInputType.MouseMovement then
+			if isInventoryOpen then
+				UserInputService.MouseIconEnabled = true
+			end
 			if isGamepadCursorActive and gamepadCursorFrame then
 				isGamepadCursorActive = false
 				gamepadCursorFrame.Visible = false

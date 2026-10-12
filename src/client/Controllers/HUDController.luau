@@ -4,6 +4,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
 local RunService = game:GetService("RunService")
 local StarterGui = game:GetService("StarterGui")
 local ProximityPromptService = game:GetService("ProximityPromptService")
@@ -178,7 +179,7 @@ local function updateHotkeyLabel(lastInputType: Enum.UserInputType)
 	end
 
 	if invCloseHintLabel then
-		invCloseHintLabel.Text = if isGamepad then "[B] / [Y] Schließen" else "[E] Schließen"
+		invCloseHintLabel.Text = if isGamepad then "[B] Schließen" else "[E] Schließen"
 	end
 
 	if lbTabButton and rbTabButton then
@@ -209,6 +210,65 @@ local function updateInventoryBadge()
 		local count = getTotalItemCount()
 		invBadgeLabel.Text = tostring(count)
 		invBadgeLabel.Visible = count > 0
+	end
+end
+
+-- Steuerung bei geöffnetem Inventar einfrieren & freigeben (Verhindert Laufen/Kamera/Springen)
+local playerControls: any = nil
+local function getPlayerControls(): any
+	if playerControls then
+		return playerControls
+	end
+	local playerScripts = LocalPlayer:FindFirstChild("PlayerScripts")
+	if playerScripts then
+		local pModule = playerScripts:FindFirstChild("PlayerModule")
+		if pModule and pModule:IsA("ModuleScript") then
+			local success, mod = pcall(require, pModule)
+			if success and mod and typeof(mod.GetControls) == "function" then
+				playerControls = mod:GetControls()
+			end
+		end
+	end
+	return playerControls
+end
+
+local FREEZE_ACTION_NAME = "FreezeControlsInInventory"
+
+local function freezeControls()
+	-- 1. PlayerModule Controls disablen (blockiert WASD, linken Stick und Springen)
+	local controls = getPlayerControls()
+	if controls and typeof(controls.Disable) == "function" then
+		controls:Disable()
+	end
+
+	-- 2. ContextActionService Sink (blockiert linken Stick Laufen, rechten Stick Kamera & ButtonA Springen)
+	ContextActionService:BindActionAtPriority(
+		FREEZE_ACTION_NAME,
+		function()
+			return Enum.ContextActionResult.Sink
+		end,
+		false,
+		Enum.ContextActionPriority.High.Value + 3000,
+		Enum.KeyCode.Thumbstick1,
+		Enum.KeyCode.Thumbstick2,
+		Enum.KeyCode.ButtonA
+	)
+
+	-- 3. Doppelten weißen Roblox-Standardcursor deaktivieren
+	pcall(function()
+		local GamepadService = game:GetService("GamepadService")
+		GamepadService:DisableGamepadCursor()
+	end)
+end
+
+local function unfreezeControls()
+	-- 1. ContextActionService Sink aufheben
+	ContextActionService:UnbindAction(FREEZE_ACTION_NAME)
+
+	-- 2. PlayerModule Controls re-enablen
+	local controls = getPlayerControls()
+	if controls and typeof(controls.Enable) == "function" then
+		controls:Enable()
 	end
 end
 
@@ -690,6 +750,9 @@ function HUDController.OpenInventory()
 	rebuildInventoryList()
 	updateInventoryBadge()
 
+	-- 0. Steuerung einfrieren (Verhindert Laufen, Springen & Kamera-Drehung im Menü)
+	freezeControls()
+
 	-- 1. Modal aktivieren & Maus in Egoperspektive / First-Person freigeben!
 	invBackdrop.Modal = true
 	invBackdrop.Visible = true
@@ -734,6 +797,9 @@ function HUDController.CloseInventory()
 	end
 	isInventoryOpen = false
 	HUDController.CloseItemDetails()
+
+	-- Steuerung wieder vollständig freischalten!
+	unfreezeControls()
 
 	invBackdrop.Modal = false
 	isGamepadCursorActive = false
@@ -1411,7 +1477,7 @@ local function createHUD()
 	damierGrad.Parent = damier
 
 	-- Kopfzeile mit 2-Tier 3D Drop-Shadow Divider & 3D Close Button [X]
-	local headerFrame = CheckUIComponents.createHeader(modal, "INVENTAR & RELIKTE", CheckUITheme.HeaderThemes.Rebirth)
+	local headerFrame = CheckUIComponents.createHeader(modal, "INVENTAR", CheckUITheme.HeaderThemes.Rebirth)
 	headerFrame.ZIndex = 12
 
 	local closeBtn = headerFrame:FindFirstChild("CloseButton") :: ImageButton?
@@ -1424,21 +1490,39 @@ local function createHUD()
 		end
 	end
 
-	-- Hotkey-Hinweis zum Schließen
+	-- Hotkey-Hinweis Badge zum Schließen (eigenständiges Pill-Badge links neben dem [X]-Button)
+	local closeBadge = Instance.new("Frame")
+	closeBadge.Name = "CloseBadge"
+	closeBadge.Size = UDim2.new(0, 105, 0, 24)
+	closeBadge.Position = UDim2.new(1, -64, 0.5, -2)
+	closeBadge.AnchorPoint = Vector2.new(1, 0.5)
+	closeBadge.BackgroundColor3 = Color3.fromRGB(24, 16, 36)
+	closeBadge.BackgroundTransparency = 0.25
+	closeBadge.ZIndex = 15
+	closeBadge.Parent = headerFrame
+
+	local badgeCorner = Instance.new("UICorner")
+	badgeCorner.CornerRadius = UDim.new(0, 4)
+	badgeCorner.Parent = closeBadge
+
+	local badgeStroke = Instance.new("UIStroke")
+	badgeStroke.Color = Color3.fromRGB(0, 0, 0)
+	badgeStroke.Thickness = 1.8
+	badgeStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	badgeStroke.Parent = closeBadge
+
 	local closeHint = Instance.new("TextLabel")
 	closeHint.Name = "CloseHint"
-	closeHint.Size = UDim2.new(0, 140, 0, 24)
-	closeHint.Position = UDim2.new(1, -68, 0.5, -2)
-	closeHint.AnchorPoint = Vector2.new(1, 0.5)
+	closeHint.Size = UDim2.new(1, 0, 1, 0)
 	closeHint.BackgroundTransparency = 1
 	closeHint.TextColor3 = Color3.fromRGB(224, 210, 255)
 	closeHint.Font = CheckUITheme.Typography.Font
-	closeHint.TextSize = 12
-	closeHint.TextXAlignment = Enum.TextXAlignment.Right
+	closeHint.TextSize = 11
+	closeHint.TextXAlignment = Enum.TextXAlignment.Center
 	closeHint.Text = "[E] Schließen"
-	closeHint.ZIndex = 15
-	closeHint.Parent = headerFrame
-	addCheckUIStroke(closeHint, 2.0)
+	closeHint.ZIndex = 16
+	closeHint.Parent = closeBadge
+	addCheckUIStroke(closeHint, 1.8)
 	invCloseHintLabel = closeHint
 
 	-- Kategorie-Reiter (TabBar mit LB & RB Schultertasten-Steuerung)

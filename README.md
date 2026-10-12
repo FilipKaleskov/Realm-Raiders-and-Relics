@@ -11,12 +11,12 @@ Füge diese Befehle unten in die **Befehlszeile (Command Bar)** in Roblox Studio
 
 ### 🌌 Komplette Video-Welt generieren (Hängebrücke + Säure-Abgrund + Nacht-Lighting + Plots + Tempel-Portale + Boss-Arena):
 ```lua
-pcall(function() workspace.Environment:Destroy() end); pcall(function() workspace.Plots:Destroy() end); require(game.ServerScriptService.Server.Services.EnvironmentService).Init(); require(game.ServerScriptService.Server.Services.PlotService).Init(); require(game.ServerScriptService.Server.Services.PortalService).Init(); require(game.ServerScriptService.Server.Services.BossService).Init()
+pcall(function() workspace.Baseplate:Destroy() end); pcall(function() workspace.Environment:Destroy() end); pcall(function() workspace.Plots:Destroy() end); require(game.ServerScriptService.Server.Services.EnvironmentService).Init(); require(game.ServerScriptService.Server.Services.PlotService).Init(); require(game.ServerScriptService.Server.Services.PortalService).Init(); require(game.ServerScriptService.Server.Services.BossService).Init()
 ```
 
 ### 🌉 Nur Video-Umgebung aufbauen (Nacht-Lighting, Säuresee, Hängebrücke, Fackeln):
 ```lua
-require(game.ServerScriptService.Server.Services.EnvironmentService).Init()
+pcall(function() workspace.Baseplate:Destroy() end); require(game.ServerScriptService.Server.Services.EnvironmentService).Init()
 ```
 
 > **Tipp:** Drücke nach dem Ausführen einfach **Strg + S**, um die generierten 3D-Objekte dauerhaft in deiner Roblox-Studio-Welt zu speichern.

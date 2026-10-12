@@ -435,6 +435,13 @@ function EnvironmentService.Init()
 	end
 	isInitialized = true
 
+	-- 0. Standard Roblox Studio Baseplate entfernen (verhindert Z-Fighting & legt den Säure-Abgrund frei)
+	for _, child in Workspace:GetChildren() do
+		if child:IsA("BasePart") and string.lower(child.Name):find("baseplate") then
+			child:Destroy()
+		end
+	end
+
 	-- 1. Nacht-Lighting & Post-Processing
 	setupCinematicLighting()
 

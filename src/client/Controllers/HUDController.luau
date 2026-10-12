@@ -7,6 +7,7 @@ local UserInputService = game:GetService("UserInputService")
 local StarterGui = game:GetService("StarterGui")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui
@@ -111,6 +112,12 @@ local cachedInventory: InventoryData = {
 local cachedGold = 0
 local cachedCPS = 0
 local currentDimensionName = "Oberwelt"
+local cachedBossData = {
+	Name = "Wald-Golem",
+	Health = 300,
+	MaxHealth = 300,
+	IsAlive = false,
+}
 
 -- Hilfsfunktion: Fügt einen schwarzen Kontur-Stroke nach Check-UI Standard ein
 local function addCheckUIStroke(parent: Instance, thickness: number?, color: Color3?): UIStroke
@@ -1804,9 +1811,21 @@ local function hookHumanoidHealth(character: Model)
 	end)
 end
 
--- Aktualisiert den Boss-Lebensbalken
+-- Aktualisiert den Boss-Lebensbalken (NUR sichtbar in der Boss-Welt!)
 function HUDController.UpdateBossBar(name: string, health: number, maxHealth: number, isAlive: boolean)
+	cachedBossData.Name = name
+	cachedBossData.Health = health
+	cachedBossData.MaxHealth = maxHealth
+	cachedBossData.IsAlive = isAlive
+
 	if not bossBarContainer or not bossBarFill or not bossTitleLabel then
+		return
+	end
+
+	-- Boss-Leiste NUR anzeigen, wenn der Spieler sich in der Boss-Welt befindet!
+	local isInBossWorld = (currentDimensionName == "Wald-Ruinen (Boss-Arena)")
+	if not isInBossWorld then
+		bossBarContainer.Visible = false
 		return
 	end
 
@@ -1818,18 +1837,43 @@ function HUDController.UpdateBossBar(name: string, health: number, maxHealth: nu
 	else
 		bossTitleLabel.Text = string.format("💀 %s: Besiegt!", name)
 		task.delay(2.5, function()
-			if bossBarContainer then
+			if bossBarContainer and (not cachedBossData.IsAlive or cachedBossData.Health <= 0) then
 				bossBarContainer.Visible = false
 			end
 		end)
 	end
 end
 
--- Aktualisiert die angezeigte Dimension
+-- Aktualisiert die angezeigte Dimension & passt atmosphärisches Lighting an
 function HUDController.SetDimension(dimensionName: string)
 	currentDimensionName = dimensionName
 	if playerDimLabel then
 		playerDimLabel.Text = string.format("📍 %s", dimensionName)
+	end
+
+	local isInBossWorld = (dimensionName == "Wald-Ruinen (Boss-Arena)")
+	if not isInBossWorld then
+		-- Wenn man in die Oberwelt zurückkehrt: Boss-Leiste sofort ausblenden!
+		if bossBarContainer then
+			bossBarContainer.Visible = false
+		end
+		-- Oberwelt-Atmosphäre: Strahlendes klares Tageslicht
+		Lighting.ClockTime = 14
+		Lighting.FogEnd = 100000
+		Lighting.FogStart = 0
+		Lighting.FogColor = Color3.fromRGB(192, 210, 230)
+		Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+	else
+		-- Wenn man die Boss-Welt betritt: Boss-Leiste wieder einblenden, falls der Boss aktiv ist
+		if cachedBossData and cachedBossData.IsAlive and cachedBossData.Health > 0 then
+			HUDController.UpdateBossBar(cachedBossData.Name, cachedBossData.Health, cachedBossData.MaxHealth, true)
+		end
+		-- Boss-Welt-Atmosphäre: Düsterer, geheimnisvoller Smaragd-Dunst & Dämmerung
+		Lighting.ClockTime = 20.5
+		Lighting.FogEnd = 240
+		Lighting.FogStart = 35
+		Lighting.FogColor = Color3.fromRGB(18, 35, 25)
+		Lighting.OutdoorAmbient = Color3.fromRGB(45, 55, 45)
 	end
 end
 
@@ -2027,6 +2071,24 @@ function HUDController.Init()
 	-- Initialen Inventar-Sync vom Server anfordern
 	task.defer(function()
 		RequestInventory:FireServer()
+	end)
+
+	-- Reset Dimension bei Tod/Respawn
+	local function onCharacter(char: Model)
+		local hum = char:WaitForChild("Humanoid", 10) :: Humanoid?
+		if hum then
+			hum.Died:Connect(function()
+				HUDController.SetDimension("Oberwelt")
+			end)
+		end
+	end
+
+	if LocalPlayer.Character then
+		onCharacter(LocalPlayer.Character)
+	end
+	LocalPlayer.CharacterAdded:Connect(function(char)
+		HUDController.SetDimension("Oberwelt")
+		onCharacter(char)
 	end)
 
 	print("[HUDController] Initialisiert: Check-UI Design System HUD, GothamBlack Typografie & Responsive Engine aktiv.")

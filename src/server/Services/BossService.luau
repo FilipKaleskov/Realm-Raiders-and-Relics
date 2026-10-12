@@ -41,13 +41,19 @@ local GoldUpdatedEvent = getOrCreateRemoteEvent(EventsFolder, "GoldUpdated")
 
 local BossService = {}
 
-local ARENA_CENTER = Vector3.new(0, 100, 500)
+local ARENA_CENTER = Vector3.new(0, 500, 25000)
 local ARENA_RADIUS = 60
+
+BossService.ARENA_CENTER = ARENA_CENTER
+BossService.ARENA_RADIUS = ARENA_RADIUS
+BossService.ARENA_SPAWN = ARENA_CENTER + Vector3.new(0, 3.5, 38)
+BossService.ARENA_PORTAL_POS = ARENA_CENTER + Vector3.new(0, 0.5, 48)
 
 local currentBossModel: Model? = nil
 local currentBossHumanoid: Humanoid? = nil
 local isBossAlive = false
 local isBossAttacking = false
+local isBossDying = false
 local isInitialized = false
 
 local playerAttackCooldowns: { [Player]: number } = {}
@@ -66,35 +72,82 @@ local function createPart(parent: Instance, name: string, size: Vector3, pos: Ve
 	return part
 end
 
--- Erstellt die Boss-Arena in den Wald-Ruinen
+-- Erstellt die Boss-Arena in den Wald-Ruinen als vollständig abgekapselte Kammer (25.000 Studs entfernt)
 local function ensureArenaExists(): Folder
 	local existing = Workspace:FindFirstChild("Arena_WaldRuinen")
-	if existing and existing:IsA("Folder") then
-		return existing
+	if existing then
+		existing:Destroy()
 	end
 
 	local arena = Instance.new("Folder")
 	arena.Name = "Arena_WaldRuinen"
 	arena.Parent = Workspace
 
-	-- Große kreisförmige/oktogonale Arena-Bodenplatte
-	local floor = createPart(arena, "ArenaFloor", Vector3.new(120, 2, 120), ARENA_CENTER, Color3.fromRGB(45, 55, 45), Enum.Material.Cobblestone)
-	floor.Material = Enum.Material.Slate
+	-- 1. Große kreisförmige/oktogonale Arena-Bodenplatte
+	local floor = createPart(arena, "ArenaFloor", Vector3.new(130, 3, 130), ARENA_CENTER, Color3.fromRGB(45, 55, 45), Enum.Material.Slate)
 
-	-- Begrenzungsmauer & antike Steinsäulen
+	-- Äußerer Zierring / Tempel-Fundament
+	createPart(arena, "ArenaOuterRing", Vector3.new(136, 1.5, 136), ARENA_CENTER - Vector3.new(0, 1, 0), Color3.fromRGB(35, 42, 35), Enum.Material.Cobblestone)
+
+	-- 2. Vollständig geschlossene antike Ruinen-Außenmauer (16 Segmente, Höhe 42 Studs!)
+	local wallSegmentCount = 16
+	local wallWidth = ((2 * math.pi * ARENA_RADIUS) / wallSegmentCount) + 3
+	local wallHeight = 42
+	local wallThickness = 5
+
+	for i = 1, wallSegmentCount do
+		local angle = (i / wallSegmentCount) * math.pi * 2
+		local x = math.cos(angle) * ARENA_RADIUS
+		local z = math.sin(angle) * ARENA_RADIUS
+		local wallPos = ARENA_CENTER + Vector3.new(x, wallHeight / 2, z)
+
+		local wall = Instance.new("Part")
+		wall.Name = "RuinsWall_" .. i
+		wall.Size = Vector3.new(wallWidth, wallHeight, wallThickness)
+		wall.CFrame = CFrame.new(wallPos, ARENA_CENTER + Vector3.new(0, wallHeight / 2, 0))
+		wall.Color = if i % 2 == 0 then Color3.fromRGB(55, 65, 55) else Color3.fromRGB(60, 70, 60)
+		wall.Material = Enum.Material.Cobblestone
+		wall.Anchored = true
+		wall.CanCollide = true
+		wall.Parent = arena
+
+		-- Moosiger Sims / Mauerkrone
+		local rim = Instance.new("Part")
+		rim.Name = "RuinsRim_" .. i
+		rim.Size = Vector3.new(wallWidth + 1, 3, wallThickness + 2)
+		rim.CFrame = CFrame.new(wallPos + Vector3.new(0, wallHeight / 2 + 1.5, 0), ARENA_CENTER + Vector3.new(0, wallHeight / 2 + 1.5, 0))
+		rim.Color = Color3.fromRGB(40, 75, 45)
+		rim.Material = Enum.Material.Grass
+		rim.Anchored = true
+		rim.CanCollide = true
+		rim.Parent = arena
+	end
+
+	-- 3. Begrenzungsmauer & antike Steinsäulen mit leuchtenden Smaragd-Runen & Fackellicht
 	local pillarCount = 8
 	for i = 1, pillarCount do
 		local angle = (i / pillarCount) * math.pi * 2
-		local x = math.cos(angle) * (ARENA_RADIUS - 4)
-		local z = math.sin(angle) * (ARENA_RADIUS - 4)
-		local pillarPos = ARENA_CENTER + Vector3.new(x, 10, z)
+		local x = math.cos(angle) * (ARENA_RADIUS - 6)
+		local z = math.sin(angle) * (ARENA_RADIUS - 6)
+		local pillarPos = ARENA_CENTER + Vector3.new(x, 15, z)
 
-		local pillar = createPart(arena, "Pillar_" .. i, Vector3.new(6, 20, 6), pillarPos, Color3.fromRGB(70, 80, 70), Enum.Material.Cobblestone)
+		local pillar = createPart(arena, "Pillar_" .. i, Vector3.new(7, 30, 7), pillarPos, Color3.fromRGB(65, 75, 65), Enum.Material.Cobblestone)
 		pillar.TopSurface = Enum.SurfaceType.Smooth
 
 		-- Leuchtende Runen auf Säulen
-		local rune = createPart(arena, "Rune_" .. i, Vector3.new(6.2, 3, 6.2), pillarPos + Vector3.new(0, 4, 0), Color3.fromRGB(46, 204, 113), Enum.Material.Neon, false)
+		local rune = createPart(arena, "Rune_" .. i, Vector3.new(7.4, 4, 7.4), pillarPos + Vector3.new(0, 4, 0), Color3.fromRGB(46, 204, 113), Enum.Material.Neon, false)
+
+		-- Atmosphärisches Smaragd-Licht
+		local light = Instance.new("PointLight")
+		light.Color = Color3.fromRGB(46, 204, 113)
+		light.Range = 24
+		light.Brightness = 2.2
+		light.Parent = rune
 	end
+
+	-- 4. Unsichtbare Decken-Barriere (verhindert Ausbrechen ins Void)
+	local ceiling = createPart(arena, "ArenaCeiling", Vector3.new(140, 2, 140), ARENA_CENTER + Vector3.new(0, wallHeight + 1, 0), Color3.fromRGB(0, 0, 0), nil, true)
+	ceiling.Transparency = 1
 
 	return arena
 end
@@ -212,12 +265,13 @@ local function spawnGolemModel(): Model
 	humanoid.WalkSpeed = 9
 	humanoid.Parent = model
 
-	-- Overhead-Boss-Health-Bar
+	-- Overhead-Boss-Health-Bar (nur aus der Nähe sichtbar, kein AlwaysOnTop durch Wände)
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "BossHealthBar"
 	billboard.Size = UDim2.new(0, 180, 0, 48)
 	billboard.StudsOffset = Vector3.new(0, 4, 0)
-	billboard.AlwaysOnTop = true
+	billboard.AlwaysOnTop = false
+	billboard.MaxDistance = 75
 	billboard.Parent = head
 
 	local barBg = Instance.new("Frame")
@@ -276,8 +330,69 @@ local function spawnGolemModel(): Model
 	currentBossModel = model
 	currentBossHumanoid = humanoid
 	isBossAlive = true
+	isBossDying = false
 
 	return model
+end
+
+-- Liefert die Anzahl lebender Spieler in der Boss-Arena
+local function getPlayersInArenaCount(): number
+	local count = 0
+	for _, player in Players:GetPlayers() do
+		local char = player.Character
+		if char then
+			local hum = char:FindFirstChild("Humanoid") :: Humanoid?
+			local root = char:FindFirstChild("HumanoidRootPart") :: BasePart?
+			if hum and root and hum.Health > 0 then
+				local dist = (root.Position - ARENA_CENTER).Magnitude
+				if dist <= (ARENA_RADIUS + 25) then
+					count += 1
+				end
+			end
+		end
+	end
+	return count
+end
+
+-- Despawnt das Boss-Modell sauber (z. B. wenn alle Spieler die Arena verlassen)
+local function despawnGolem()
+	if currentBossModel then
+		currentBossModel:Destroy()
+		currentBossModel = nil
+		currentBossHumanoid = nil
+	end
+	isBossAlive = false
+	isBossAttacking = false
+	isBossDying = false
+	BossUpdatedEvent:FireAllClients("Wald-Golem", 0, BossConfig.ForestGolemCore.MaxHealth, false)
+end
+
+-- Öffentliche API: Wird von PortalService aufgerufen, wenn ein Spieler die Arena durch das Portal betritt
+function BossService.OnPlayerEnteredArena(player: Player)
+	print(string.format("[BossService] %s hat die Boss-Arena betreten.", player.Name))
+
+	-- Falls der Boss noch nicht existiert und nicht im Respawn-Timer steckt -> Spawnen!
+	if not isBossAlive and not isBossDying then
+		spawnGolemModel()
+		updateBossHealthUI(BossConfig.ForestGolemCore.MaxHealth, BossConfig.ForestGolemCore.MaxHealth)
+		NotificationEvent:FireClient(player, "⚠️ Der Wald-Golem erwacht aus den Ruinen!", false)
+	elseif isBossAlive and currentBossHumanoid then
+		-- Aktuellen Boss-Stand sofort gezielt an den beitretenden Spieler senden
+		BossUpdatedEvent:FireClient(player, "Wald-Golem", currentBossHumanoid.Health, currentBossHumanoid.MaxHealth, true)
+	end
+end
+
+-- Öffentliche API: Wird von PortalService aufgerufen, wenn ein Spieler die Arena durch das Portal verlässt
+function BossService.OnPlayerLeftArena(player: Player)
+	print(string.format("[BossService] %s hat die Boss-Arena verlassen.", player.Name))
+
+	task.defer(function()
+		local remaining = getPlayersInArenaCount()
+		if remaining == 0 and isBossAlive and not isBossDying then
+			print("[BossService] Keine Spieler mehr in der Arena - Wald-Golem despawnt sofort.")
+			despawnGolem()
+		end
+	end)
 end
 
 -- Boss-Tod und Belohnungsvergabe
@@ -286,6 +401,7 @@ local function handleBossDefeated(killer: Player?)
 		return
 	end
 	isBossAlive = false
+	isBossDying = true
 
 	print("[BossService] Wald-Golem besiegt!")
 
@@ -327,11 +443,16 @@ local function handleBossDefeated(killer: Player?)
 		end
 	end)
 
-	-- Respawn-Timer
+	-- Respawn-Timer: Nur respawnen, wenn noch Spieler in der Arena sind!
 	task.delay(BossConfig.ForestGolemCore.RespawnTime, function()
-		print("[BossService] Wald-Golem respawnt...")
-		spawnGolemModel()
-		updateBossHealthUI(BossConfig.ForestGolemCore.MaxHealth, BossConfig.ForestGolemCore.MaxHealth)
+		isBossDying = false
+		if getPlayersInArenaCount() > 0 then
+			print("[BossService] Spieler in der Arena - Wald-Golem respawnt...")
+			spawnGolemModel()
+			updateBossHealthUI(BossConfig.ForestGolemCore.MaxHealth, BossConfig.ForestGolemCore.MaxHealth)
+		else
+			print("[BossService] Keine Spieler mehr in der Arena - Respawn pausiert bis zum nächsten Portal-Eintritt.")
+		end
 	end)
 end
 
@@ -408,8 +529,19 @@ end
 -- Boss-KI-Schleife (Server-autoritär)
 local function startBossAILoop()
 	task.spawn(function()
+		local emptyArenaTicks = 0
 		while true do
 			task.wait(0.3)
+
+			-- Prüfe, ob sich noch Spieler in der Arena aufhalten
+			local playersInArena = getPlayersInArenaCount()
+			if playersInArena == 0 then
+				if isBossAlive and not isBossDying then
+					print("[BossService] Keine Spieler in der Arena - Wald-Golem despawnt sofort.")
+					despawnGolem()
+				end
+				continue
+			end
 
 			if not isBossAlive or not currentBossModel or not currentBossHumanoid or isBossAttacking then
 				continue
@@ -527,7 +659,6 @@ function BossService.Init()
 	isInitialized = true
 
 	ensureArenaExists()
-	spawnGolemModel()
 	setupAttackHandler()
 	startBossAILoop()
 
@@ -536,7 +667,7 @@ function BossService.Init()
 		playerAttackCooldowns[player] = nil
 	end)
 
-	print("[BossService] Wald-Golem und PvE-System erfolgreich initialisiert.")
+	print("[BossService] Wald-Golem initialisiert (Spawnt dynamisch bei Portal-Eintritt).")
 end
 
 return BossService

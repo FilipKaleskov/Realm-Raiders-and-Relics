@@ -2,7 +2,13 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
 local Workspace = game:GetService("Workspace")
+
+local Server = ServerScriptService:WaitForChild("Server")
+local Services = Server:WaitForChild("Services")
+local BossServiceModule = Services:WaitForChild("BossService") :: ModuleScript
+local BossService = require(BossServiceModule)
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local EventsFolder = Shared:WaitForChild("Events")
@@ -24,10 +30,10 @@ local DimensionChangedEvent = getOrCreateRemoteEvent(EventsFolder, "DimensionCha
 local PortalService = {}
 local isInitialized = false
 
--- Teleport-Positionen (weit außerhalb aller Plots bei X = 95)
 local OVERWORLD_PORTAL_POS = Vector3.new(95, 0.5, 0)
 local OVERWORLD_SPAWN = Vector3.new(82, 3.5, 0)
-local ARENA_SPAWN = Vector3.new(0, 103.5, 540)
+local ARENA_SPAWN = BossService.ARENA_SPAWN
+local ARENA_PORTAL_POS = BossService.ARENA_PORTAL_POS
 
 -- Erstellt einen Portal-Rahmen mit leuchtendem Portal-Vortex
 local function createPortal(name: string, position: Vector3, destination: Vector3, dimensionName: string, promptText: string): Model
@@ -135,6 +141,17 @@ local function createPortal(name: string, position: Vector3, destination: Vector
 		root.CFrame = CFrame.new(destination)
 		DimensionChangedEvent:FireClient(player, dimensionName)
 		print(string.format("[PortalService] %s teleportiert nach: %s", player.Name, dimensionName))
+
+		-- Boss dynamisch aufwecken/spawnen, falls Spieler die Arena betritt
+		if destination == ARENA_SPAWN then
+			task.defer(function()
+				BossService.OnPlayerEnteredArena(player)
+			end)
+		elseif destination == OVERWORLD_SPAWN then
+			task.defer(function()
+				BossService.OnPlayerLeftArena(player)
+			end)
+		end
 	end)
 
 	return portalModel
@@ -168,7 +185,7 @@ function PortalService.Init()
 	-- 2. Portal in der Boss-Arena -> führt zurück zur Oberwelt
 	createPortal(
 		"Portal_Oberwelt",
-		Vector3.new(0, 100.5, 550),
+		ARENA_PORTAL_POS,
 		OVERWORLD_SPAWN,
 		"Oberwelt",
 		"Zurückkehren"

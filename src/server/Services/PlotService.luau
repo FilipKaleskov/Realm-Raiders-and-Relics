@@ -101,6 +101,84 @@ local function createBillboard(parent: Instance, text: string, offset: Vector3):
 	return billboard
 end
 
+-- Liefert den Haupt-BasePart eines Sockels (egal ob Part, MeshPart oder Model)
+local function getPedestalRootPart(pedestal: Instance?): BasePart?
+	if not pedestal then
+		return nil
+	end
+	if pedestal:IsA("BasePart") then
+		return pedestal
+	elseif pedestal:IsA("Model") then
+		return pedestal.PrimaryPart or (pedestal:FindFirstChildWhichIsA("BasePart") :: BasePart?)
+	end
+	return nil
+end
+
+-- Sucht nach einem 3D-Sockel-Modell (z.B. aus Blender importiertes DungeonPedestal)
+local function getCustomPedestalTemplate(): Instance?
+	local sharedAssets = Shared:FindFirstChild("Assets")
+	if sharedAssets then
+		local models = sharedAssets:FindFirstChild("Models")
+		if models then
+			local template = models:FindFirstChild("DungeonPedestal")
+			if template then
+				return template
+			end
+		end
+	end
+	local repTemplate = ReplicatedStorage:FindFirstChild("DungeonPedestal")
+	if repTemplate then
+		return repTemplate
+	end
+	local wsTemplate = Workspace:FindFirstChild("DungeonPedestal")
+	if wsTemplate then
+		return wsTemplate
+	end
+	return nil
+end
+
+-- Erzeugt eine Sockel-Instanz (bevorzugt das 3D-Blender-Modell, sonst solider Stein-Fallback)
+local function createPedestalInstance(slotIndex: number, targetPosition: Vector3): Instance
+	local template = getCustomPedestalTemplate()
+	if template then
+		local clone = template:Clone()
+		clone.Name = "Sockel_" .. slotIndex
+		clone:SetAttribute("SlotIndex", slotIndex)
+
+		if clone:IsA("BasePart") then
+			clone.Position = targetPosition
+			clone.Anchored = true
+			clone.CanCollide = true
+			return clone
+		elseif clone:IsA("Model") then
+			local root = clone.PrimaryPart or clone:FindFirstChildWhichIsA("BasePart")
+			if root then
+				clone.PrimaryPart = root
+				clone:PivotTo(CFrame.new(targetPosition))
+				for _, part in clone:GetDescendants() do
+					if part:IsA("BasePart") then
+						part.Anchored = true
+						part.CanCollide = true
+					end
+				end
+				return clone
+			end
+		end
+	end
+
+	-- Standard-Fallback (Robuster Steinblock)
+	local pedestal = Instance.new("Part")
+	pedestal.Name = "Sockel_" .. slotIndex
+	pedestal.Size = Vector3.new(4, 2, 4)
+	pedestal.Position = targetPosition
+	pedestal.Anchored = true
+	pedestal.CanCollide = true
+	pedestal.Material = Enum.Material.Cobblestone
+	pedestal.Color = Color3.fromRGB(99, 110, 114)
+	pedestal:SetAttribute("SlotIndex", slotIndex)
+	return pedestal
+end
+
 -- Hilfsfunktion: Ruft ein Attachment ab oder erstellt es mit lokalem Offset
 local function getOrCreateAttachment(parent: BasePart, name: string, localPos: Vector3): Attachment
 	local existing = parent:FindFirstChild(name)
@@ -248,7 +326,12 @@ local function buildStatueOnPedestal(pedestal: BasePart, coreId: string, level: 
 end
 
 -- Richtet die ProximityPrompts für Sockel ein (Platzieren, Upgraden, Entfernen)
-local function setupPedestalPrompts(pedestal: BasePart, player: Player, slotIndex: number, slotData: any)
+local function setupPedestalPrompts(pedestal: Instance, player: Player, slotIndex: number, slotData: any)
+	local pedestalPart = getPedestalRootPart(pedestal)
+	if not pedestalPart then
+		return
+	end
+
 	-- Bestehende Prompts bereinigen (auch in Attachments)
 	for _, desc in pedestal:GetDescendants() do
 		if desc:IsA("ProximityPrompt") then
@@ -257,9 +340,9 @@ local function setupPedestalPrompts(pedestal: BasePart, player: Player, slotInde
 	end
 
 	-- Attachments für getrennte 3D-Positionen (Links = Upgraden, Rechts = Entfernen, Mitte = Platzieren)
-	local leftAtt = getOrCreateAttachment(pedestal, "PromptLeftAtt", Vector3.new(-2.2, 0.8, 0))
-	local rightAtt = getOrCreateAttachment(pedestal, "PromptRightAtt", Vector3.new(2.2, 0.8, 0))
-	local centerAtt = getOrCreateAttachment(pedestal, "PromptCenterAtt", Vector3.new(0, 0.8, 0))
+	local leftAtt = getOrCreateAttachment(pedestalPart, "PromptLeftAtt", Vector3.new(-2.2, 0.8, 0))
+	local rightAtt = getOrCreateAttachment(pedestalPart, "PromptRightAtt", Vector3.new(2.2, 0.8, 0))
+	local centerAtt = getOrCreateAttachment(pedestalPart, "PromptCenterAtt", Vector3.new(0, 0.8, 0))
 
 	if slotData and slotData.CoreId then
 		local bossInfo = BossConfig[slotData.CoreId]
@@ -287,7 +370,7 @@ local function setupPedestalPrompts(pedestal: BasePart, player: Player, slotInde
 
 			local char = triggeringPlayer.Character
 			local root = if char then char:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
-			if not root or (root.Position - pedestal.Position).Magnitude > 16 then
+			if not root or (root.Position - pedestalPart.Position).Magnitude > 16 then
 				return
 			end
 
@@ -324,7 +407,7 @@ local function setupPedestalPrompts(pedestal: BasePart, player: Player, slotInde
 
 			local char = triggeringPlayer.Character
 			local root = if char then char:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
-			if not root or (root.Position - pedestal.Position).Magnitude > 16 then
+			if not root or (root.Position - pedestalPart.Position).Magnitude > 16 then
 				return
 			end
 
@@ -364,7 +447,7 @@ local function setupPedestalPrompts(pedestal: BasePart, player: Player, slotInde
 			local char = triggeringPlayer.Character
 			local root = if char then char:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
 			local hum = if char then char:FindFirstChild("Humanoid") :: Humanoid? else nil
-			if not root or not hum or hum.Health <= 0 or (root.Position - pedestal.Position).Magnitude > 16 then
+			if not root or not hum or hum.Health <= 0 or (root.Position - pedestalPart.Position).Magnitude > 16 then
 				return
 			end
 
@@ -399,7 +482,7 @@ local function setupPedestalPrompts(pedestal: BasePart, player: Player, slotInde
 
 			local char = triggeringPlayer.Character
 			local root = if char then char:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
-			if not root or (root.Position - pedestal.Position).Magnitude > 16 then
+			if not root or (root.Position - pedestalPart.Position).Magnitude > 16 then
 				return
 			end
 
@@ -460,11 +543,12 @@ function PlotService.UpdatePlotVisuals(player: Player)
 
 	for slotIndex = 1, 3 do
 		local pedestal = pedestalsFolder:FindFirstChild("Sockel_" .. slotIndex)
-		if pedestal and pedestal:IsA("BasePart") then
+		local pedestalPart = getPedestalRootPart(pedestal)
+		if pedestal and pedestalPart then
 			local slotData = data.BaseData.Slots[slotIndex]
-			local coreModel = pedestal:FindFirstChild("CoreModel")
+			local coreModel = pedestal:FindFirstChild("CoreModel") or pedestalPart:FindFirstChild("CoreModel")
 
-			local billboard = pedestal:FindFirstChild("PlotInfo") :: BillboardGui?
+			local billboard = pedestalPart:FindFirstChild("PlotInfo") :: BillboardGui? or (pedestal:FindFirstChild("PlotInfo") :: BillboardGui?)
 			local label = if billboard then billboard:FindFirstChild("Label") :: TextLabel? else nil
 
 			if slotData and slotData.CoreId then
@@ -482,11 +566,11 @@ function PlotService.UpdatePlotVisuals(player: Player)
 				end
 
 				-- Detaillierte Statue auf dem Sockel aufbauen
-				local existingStatue = pedestal:FindFirstChild("StatueModel")
+				local existingStatue = pedestal:FindFirstChild("StatueModel") or pedestalPart:FindFirstChild("StatueModel")
 				if not existingStatue 
 					or existingStatue:GetAttribute("CoreId") ~= slotData.CoreId 
 					or existingStatue:GetAttribute("Level") ~= level then
-					buildStatueOnPedestal(pedestal, slotData.CoreId, level)
+					buildStatueOnPedestal(pedestalPart, slotData.CoreId, level)
 				end
 			else
 				if label then
@@ -496,11 +580,11 @@ function PlotService.UpdatePlotVisuals(player: Player)
 				if billboard then
 					billboard.StudsOffset = Vector3.new(0, 2.8, 0)
 				end
-				local existingStatue = pedestal:FindFirstChild("StatueModel")
+				local existingStatue = pedestal:FindFirstChild("StatueModel") or pedestalPart:FindFirstChild("StatueModel")
 				if existingStatue then
 					existingStatue:Destroy()
 				end
-				local existingCore = pedestal:FindFirstChild("CoreModel")
+				local existingCore = pedestal:FindFirstChild("CoreModel") or pedestalPart:FindFirstChild("CoreModel")
 				if existingCore then
 					existingCore:Destroy()
 				end
@@ -521,13 +605,14 @@ local function clearPlotVisuals(plot: Model)
 
 	for slotIndex = 1, 3 do
 		local pedestal = pedestalsFolder:FindFirstChild("Sockel_" .. slotIndex)
-		if pedestal and pedestal:IsA("BasePart") then
-			local coreModel = pedestal:FindFirstChild("CoreModel")
+		local pedestalPart = getPedestalRootPart(pedestal)
+		if pedestal and pedestalPart then
+			local coreModel = pedestal:FindFirstChild("CoreModel") or pedestalPart:FindFirstChild("CoreModel")
 			if coreModel then
 				coreModel:Destroy()
 			end
 
-			local statueModel = pedestal:FindFirstChild("StatueModel")
+			local statueModel = pedestal:FindFirstChild("StatueModel") or pedestalPart:FindFirstChild("StatueModel")
 			if statueModel then
 				statueModel:Destroy()
 			end
@@ -539,7 +624,7 @@ local function clearPlotVisuals(plot: Model)
 				end
 			end
 
-			local billboard = pedestal:FindFirstChild("PlotInfo") :: BillboardGui?
+			local billboard = pedestalPart:FindFirstChild("PlotInfo") :: BillboardGui? or (pedestal:FindFirstChild("PlotInfo") :: BillboardGui?)
 			local label = if billboard then billboard:FindFirstChild("Label") :: TextLabel? else nil
 			if label then
 				label.Text = string.format("Slot %d: [Leer]", slotIndex)
@@ -627,18 +712,13 @@ local function createPlotModel(plotIndex: number, position: Vector3): Model
 	}
 
 	for slotIndex = 1, 3 do
-		local pedestal = Instance.new("Part")
-		pedestal.Name = "Sockel_" .. slotIndex
-		pedestal.Size = Vector3.new(4, 2, 4)
-		pedestal.Position = position + pedestalOffsets[slotIndex]
-		pedestal.Anchored = true
-		pedestal.CanCollide = true
-		pedestal.Material = Enum.Material.Cobblestone
-		pedestal.Color = Color3.fromRGB(99, 110, 114)
-		pedestal:SetAttribute("SlotIndex", slotIndex)
+		local pedestal = createPedestalInstance(slotIndex, position + pedestalOffsets[slotIndex])
 		pedestal.Parent = pedestalsFolder
 
-		createBillboard(pedestal, string.format("Slot %d: [Leer]", slotIndex), Vector3.new(0, 2.5, 0))
+		local pedestalPart = getPedestalRootPart(pedestal)
+		if pedestalPart then
+			createBillboard(pedestalPart, string.format("Slot %d: [Leer]", slotIndex), Vector3.new(0, 2.5, 0))
+		end
 	end
 
 	return plot
@@ -809,7 +889,14 @@ local function ensurePlotsExist(): Folder
 end
 
 -- Baut die 6 Plots dauerhaft in Workspace (z.B. für Edit-Modus / Studio Command Bar)
-function PlotService.BuildPlotsInStudio(): Folder
+-- Bei forceRebuild = true werden bestehende Plots durch die neuesten 3D-Modelle ersetzt
+function PlotService.BuildPlotsInStudio(forceRebuild: boolean?): Folder
+	if forceRebuild == true then
+		local oldPlots = Workspace:FindFirstChild("Plots")
+		if oldPlots then
+			oldPlots:Destroy()
+		end
+	end
 	return ensurePlotsExist()
 end
 

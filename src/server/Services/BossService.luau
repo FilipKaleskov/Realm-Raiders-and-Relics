@@ -596,13 +596,9 @@ local function startBossAILoop()
 	end)
 end
 
--- Server-Validierung von Spieler-Angriffen
+-- Server-Validierung von Spieler-Angriffen (PvE gegen Boss & PvP in der Oberwelt)
 local function setupAttackHandler()
 	AttackIntentEvent.OnServerEvent:Connect(function(player: Player)
-		if not isBossAlive or not currentBossModel or not currentBossHumanoid then
-			return
-		end
-
 		local char = player.Character
 		if not char then
 			return
@@ -614,26 +610,15 @@ local function setupAttackHandler()
 			return
 		end
 
-		local bossRoot = currentBossModel.PrimaryPart
-		if not bossRoot then
-			return
-		end
-
-		-- Cooldown-Prüfung (0.4 Sekunden zwischen Schlägen)
+		-- Cooldown-Prüfung (0.35 Sekunden zwischen Schlägen)
 		local now = os.clock()
 		local lastAttack = playerAttackCooldowns[player] or 0
-		if now - lastAttack < 0.4 then
+		if now - lastAttack < 0.35 then
 			return
 		end
 		playerAttackCooldowns[player] = now
 
-		-- Distanz-Prüfung (Anti-Kill-Aura / Reichweiten-Check)
-		local dist = (root.Position - bossRoot.Position).Magnitude
-		if dist > 18 then
-			return
-		end
-
-		-- Schaden austeilen (basierend auf der Waffe des Spielers im Inventar)
+		-- Schaden ermitteln (basierend auf der Waffe des Spielers im Inventar)
 		local playerData = DataManager.Get(player)
 		local weaponId = if playerData and playerData.Inventory and playerData.Inventory.Weapons and playerData.Inventory.Weapons[1]
 			then playerData.Inventory.Weapons[1]
@@ -641,13 +626,59 @@ local function setupAttackHandler()
 		local itemConfig = ItemConfig[weaponId]
 		local weaponDamage = if itemConfig and itemConfig.Damage then itemConfig.Damage else 25
 
-		currentBossHumanoid.Health = math.max(0, currentBossHumanoid.Health - weaponDamage)
+		-- 1. Prüfe auf Boss in Reichweite (Arena)
+		local hitBoss = false
+		if isBossAlive and currentBossModel and currentBossHumanoid and currentBossHumanoid.Health > 0 then
+			local bossRoot = currentBossModel.PrimaryPart
+			if bossRoot then
+				local dist = (root.Position - bossRoot.Position).Magnitude
+				if dist <= 18 then
+					hitBoss = true
+					currentBossHumanoid.Health = math.max(0, currentBossHumanoid.Health - weaponDamage)
+					showDamageNumber(bossRoot.Position, weaponDamage)
+					updateBossHealthUI(currentBossHumanoid.Health, currentBossHumanoid.MaxHealth)
 
-		showDamageNumber(bossRoot.Position, weaponDamage)
-		updateBossHealthUI(currentBossHumanoid.Health, currentBossHumanoid.MaxHealth)
+					if currentBossHumanoid.Health <= 0 then
+						handleBossDefeated(player)
+					end
+				end
+			end
+		end
 
-		if currentBossHumanoid.Health <= 0 then
-			handleBossDefeated(player)
+		-- 2. Wenn kein Boss getroffen: Prüfe auf feindliche Spieler in Nahkampfreichweite (PvP / Raid-Abwehr)
+		if not hitBoss then
+			local closestEnemy: Player? = nil
+			local closestHum: Humanoid? = nil
+			local closestRoot: BasePart? = nil
+			local closestDist = 14
+
+			for _, otherPlayer in Players:GetPlayers() do
+				if otherPlayer ~= player then
+					local oChar = otherPlayer.Character
+					if oChar then
+						local oHum = oChar:FindFirstChild("Humanoid") :: Humanoid?
+						local oRoot = oChar:FindFirstChild("HumanoidRootPart") :: BasePart?
+						if oHum and oRoot and oHum.Health > 0 then
+							local dist = (root.Position - oRoot.Position).Magnitude
+							if dist <= closestDist then
+								closestDist = dist
+								closestEnemy = otherPlayer
+								closestHum = oHum
+								closestRoot = oRoot
+							end
+						end
+					end
+				end
+			end
+
+			if closestEnemy and closestHum and closestRoot then
+				closestHum.Health = math.max(0, closestHum.Health - weaponDamage)
+				showDamageNumber(closestRoot.Position, weaponDamage)
+
+				if closestHum.Health <= 0 then
+					NotificationEvent:FireClient(player, string.format("⚔️ Du hast %s besiegt!", closestEnemy.DisplayName), false)
+				end
+			end
 		end
 	end)
 end

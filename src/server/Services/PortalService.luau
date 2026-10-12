@@ -26,6 +26,7 @@ local function getOrCreateRemoteEvent(parent: Instance, name: string): RemoteEve
 end
 
 local DimensionChangedEvent = getOrCreateRemoteEvent(EventsFolder, "DimensionChanged")
+local NotificationEvent = getOrCreateRemoteEvent(EventsFolder, "ShowNotification")
 
 local PortalService = {}
 local isInitialized = false
@@ -134,6 +135,12 @@ local function createPortal(name: string, position: Vector3, destination: Vector
 
 		local root = character:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if not root or (root.Position - vortex.Position).Magnitude > 16 then
+			return
+		end
+
+		-- Prüfe, ob der Spieler einen gestohlenen Kern trägt (Flucht-Restriktion)
+		if player:GetAttribute("CarryingCore") ~= nil then
+			NotificationEvent:FireClient(player, "🚫 Du kannst keine Portale betreten, solange du einen Kern trägst!", true)
 			return
 		end
 

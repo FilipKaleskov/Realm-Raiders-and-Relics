@@ -862,22 +862,12 @@ function PlotService.GetAllPlotsStatus(): { [number]: PlotStatus }
 	return statusList
 end
 
--- Beansprucht einen bestimmten Plot für einen Spieler
-function PlotService.ClaimPlot(player: Player, plotIndex: number): boolean
+-- Beansprucht einen bestimmten Plot für einen Spieler (oder den ersten freien Plot bei 0/nil)
+function PlotService.ClaimPlot(player: Player, plotIndex: number?): boolean
 	if PlayerPlots[player] then
 		local currentPlot = PlayerPlots[player]
 		local currentIndex = currentPlot:GetAttribute("PlotIndex") or "?"
 		notifyPlayer(player, string.format("Du besitzt bereits Plot %s!", tostring(currentIndex)), true)
-		return false
-	end
-
-	if plotIndex == 2 then
-		notifyPlayer(player, "Plot 2 ist für den Test-Rivalen reserviert!", true)
-		return false
-	end
-
-	if plotIndex < 1 or plotIndex > 6 then
-		notifyPlayer(player, "Ungültiger Plot gewählt!", true)
 		return false
 	end
 
@@ -886,7 +876,31 @@ function PlotService.ClaimPlot(player: Player, plotIndex: number): boolean
 		return false
 	end
 
-	local plot = plotsFolder:FindFirstChild("Plot_" .. plotIndex) :: Model?
+	-- Automatische Schnellwahl des ersten freien Plots
+	local targetIndex = plotIndex
+	if targetIndex == nil or targetIndex == 0 then
+		for candidateIndex = 1, 6 do
+			if candidateIndex ~= 2 then
+				local p = plotsFolder:FindFirstChild("Plot_" .. candidateIndex) :: Model?
+				if p and ((p:GetAttribute("OwnerUserId") :: number?) or 0) == 0 then
+					targetIndex = candidateIndex
+					break
+				end
+			end
+		end
+	end
+
+	if not targetIndex or targetIndex < 1 or targetIndex > 6 then
+		notifyPlayer(player, "Kein freier Plot verfügbar!", true)
+		return false
+	end
+
+	if targetIndex == 2 then
+		notifyPlayer(player, "Plot 2 ist für den Test-Rivalen reserviert!", true)
+		return false
+	end
+
+	local plot = plotsFolder:FindFirstChild("Plot_" .. targetIndex) :: Model?
 	if not plot then
 		notifyPlayer(player, "Plot existiert nicht!", true)
 		return false
@@ -894,7 +908,7 @@ function PlotService.ClaimPlot(player: Player, plotIndex: number): boolean
 
 	local currentOwner = (plot:GetAttribute("OwnerUserId") :: number?) or 0
 	if currentOwner ~= 0 then
-		notifyPlayer(player, string.format("Plot %d ist bereits vergeben!", plotIndex), true)
+		notifyPlayer(player, string.format("Plot %d ist bereits vergeben!", targetIndex), true)
 		PlotStatusUpdatedEvent:FireClient(player, PlotService.GetAllPlotsStatus(), false)
 		return false
 	end
@@ -911,7 +925,7 @@ function PlotService.ClaimPlot(player: Player, plotIndex: number): boolean
 		local billboard = signPost:FindFirstChild("PlotInfo") :: BillboardGui?
 		local label = if billboard then billboard:FindFirstChild("Label") :: TextLabel? else nil
 		if label then
-			label.Text = string.format("Plot %d\nBesitzer: %s", plotIndex, player.DisplayName)
+			label.Text = string.format("Plot %d\nBesitzer: %s", targetIndex, player.DisplayName)
 			label.TextColor3 = Color3.fromRGB(116, 185, 255)
 		end
 	end
@@ -926,7 +940,7 @@ function PlotService.ClaimPlot(player: Player, plotIndex: number): boolean
 		end
 	end
 
-	print(string.format("[PlotService] %s hat Plot %d beansprucht.", player.Name, plotIndex))
+	print(string.format("[PlotService] %s hat Plot %d beansprucht.", player.Name, targetIndex))
 
 	-- Nach dem Laden der Daten Sockel-Visuals und Erst-Goldstand übermitteln
 	task.spawn(function()
@@ -953,7 +967,7 @@ function PlotService.ClaimPlot(player: Player, plotIndex: number): boolean
 		PlotStatusUpdatedEvent:FireClient(p, allStatus, hasPlot)
 	end
 
-	notifyPlayer(player, string.format("🎉 Plot %d erfolgreich beansprucht! Willkommen in deiner Basis.", plotIndex), false)
+	notifyPlayer(player, string.format("🎉 Plot %d erfolgreich beansprucht! Willkommen in deiner Basis.", targetIndex), false)
 	return true
 end
 

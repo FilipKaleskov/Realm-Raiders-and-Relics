@@ -5,6 +5,24 @@
 
 ---
 
+## ⚡ Roblox Studio Quick Commands (Befehlszeile)
+
+Füge diese Befehle unten in die **Befehlszeile (Command Bar)** in Roblox Studio ein und drücke **Enter**, um die Welt direkt im **gestoppten Zustand (Edit-Modus)** aufzubauen:
+
+### 🏰 Inseln & 3D-Dungeon-Sockel aufbauen / aktualisieren:
+```lua
+workspace.Plots:Destroy(); require(game.ServerScriptService.Server.Services.PlotService).Init()
+```
+
+### 🌌 Alles auf einmal generieren (Plots + Portale + Boss-Arena):
+```lua
+workspace.Plots:Destroy(); require(game.ServerScriptService.Server.Services.PlotService).Init(); require(game.ServerScriptService.Server.Services.PortalService).Init(); require(game.ServerScriptService.Server.Services.BossService).Init()
+```
+
+> **Tipp:** Drücke nach dem Ausführen einfach **Strg + S**, um die generierten 3D-Objekte dauerhaft in deiner Roblox-Studio-Welt zu speichern.
+
+---
+
 ## 📖 Übersicht
 
 In **Realm Raiders & Relics** bereisen Spieler fremde Dimensionen, bezwingen anspruchsvolle Bosse und platzieren deren erbeutete Seelenkerne als majestätische Statuen auf ihrer Basis. Diese Statuen generieren passiv Einkommen – doch der Reichtum lockt diebische Mitspieler an!
@@ -76,25 +94,7 @@ Realm-Raiders-and-Relics/
    * Öffne Roblox Studio und erstelle einen leeren Baseplate-Ort (oder baue das Place-File mit `rojo build -o "RealmRaiders.rbxlx"`).
    * Öffne das **Rojo Plugin** in Studio und klicke auf **Connect** (Standardport: `34872`).
 
----
 
-## ⚡ Roblox Studio Quick Commands (Befehlszeile)
-
-Füge diese Befehle unten in die **Befehlszeile (Command Bar)** in Roblox Studio ein und drücke **Enter**, um die Welt direkt im **gestoppten Zustand (Edit-Modus)** aufzubauen:
-
-### 🏰 Inseln & 3D-Dungeon-Sockel aufbauen / aktualisieren:
-```lua
-workspace.Plots:Destroy(); require(game.ServerScriptService.Server.Services.PlotService).Init()
-```
-
-### 🌌 Alles auf einmal generieren (Plots + Portale + Boss-Arena):
-```lua
-workspace.Plots:Destroy(); require(game.ServerScriptService.Server.Services.PlotService).Init(); require(game.ServerScriptService.Server.Services.PortalService).Init(); require(game.ServerScriptService.Server.Services.BossService).Init()
-```
-
-> **Tipp:** Drücke nach dem Ausführen einfach **Strg + S**, um die generierten 3D-Objekte dauerhaft in deiner Roblox-Studio-Welt zu speichern.
-
----
 
 ## 🗺️ Roadmap & Meilensteine (MVP)
 

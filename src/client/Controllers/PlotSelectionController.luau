@@ -27,6 +27,7 @@ local PlotSelectionController = {}
 local isInitialized = false
 local isBannerOpen = false
 local playerHasPlot = false
+local isManuallyDismissed = false
 local autoDismissThread: thread? = nil
 
 export type PlotStatus = {
@@ -36,7 +37,7 @@ export type PlotStatus = {
 	IsRival: boolean,
 }
 
-local cachedPlotStatuses: { [number]: PlotStatus } = {}
+local cachedPlotStatuses: { [any]: PlotStatus } = {}
 
 -- UI-Elemente
 local screenGui: ScreenGui? = nil
@@ -48,9 +49,10 @@ local subtitleLabel: TextLabel? = nil
 local timerProgressBar: Frame? = nil
 local cardStroke: UIStroke? = nil
 local topPillBtn: TextButton? = nil
+local quickPickBtnRef: TextButton? = nil
 
 -- Fügt TextLabel einen kräftigen schwarzen Stroke hinzu (Check-UI Standard)
-local function addCheckUIStroke(label: TextLabel, thickness: number?)
+local function addCheckUIStroke(label: TextLabel | TextButton, thickness: number?)
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = Color3.fromRGB(0, 0, 0)
 	stroke.Thickness = thickness or 2.2
@@ -58,7 +60,66 @@ local function addCheckUIStroke(label: TextLabel, thickness: number?)
 	stroke.Parent = label
 end
 
--- Aktualisiert die horizontalen Plot-Buttons (Schnellwahl + Plots 1, 3, 4, 5, 6)
+-- Bricht den Auto-Dismiss-Timer ab
+local function cancelAutoDismiss()
+	if autoDismissThread then
+		task.cancel(autoDismissThread)
+		autoDismissThread = nil
+	end
+end
+
+-- Schnelles, flüssiges Ausblenden (z. B. nach Klick auf Schnellwahl)
+function PlotSelectionController.FastClose()
+	if not infoCard then
+		return
+	end
+	isBannerOpen = false
+	cancelAutoDismiss()
+
+	local tween = TweenService:Create(
+		infoCard,
+		TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+		{ Position = UDim2.new(0.5, 0, 0, -180) }
+	)
+	tween:Play()
+	tween.Completed:Connect(function()
+		if not isBannerOpen and infoCard then
+			infoCard.Visible = false
+		end
+	end)
+
+	if topPillBtn then
+		topPillBtn.Visible = false
+	end
+end
+
+-- Normales Schließen / Minimieren der Infobox in die Top-Pill
+function PlotSelectionController.Close()
+	if not infoCard then
+		return
+	end
+	isBannerOpen = false
+	cancelAutoDismiss()
+
+	local tween = TweenService:Create(
+		infoCard,
+		TweenInfo.new(0.24, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+		{ Position = UDim2.new(0.5, 0, 0, -180) }
+	)
+	tween:Play()
+	tween.Completed:Connect(function()
+		if not isBannerOpen and infoCard then
+			infoCard.Visible = false
+		end
+	end)
+
+	-- Pill-Button nur anzeigen, wenn der Spieler noch immer keinen Plot hat
+	if not playerHasPlot and topPillBtn then
+		topPillBtn.Visible = true
+	end
+end
+
+-- Aktualisiert die horizontalen Plot-Buttons (Schnellwahl + freie Plots 1, 3, 4, 5, 6)
 local function refreshChips()
 	if not chipsContainer then
 		return
@@ -70,24 +131,26 @@ local function refreshChips()
 		end
 	end
 
-	-- Plots 1 bis 6 (Plot 2 ist Rivale)
+	-- Plots 1 bis 6 durchlaufen (Plot 2 = Rivale)
 	for slotIndex = 1, 6 do
 		if slotIndex == 2 then
-			continue -- Test-NPC Plot überspringen
+			continue
 		end
 
-		local status = cachedPlotStatuses[slotIndex]
+		local status = cachedPlotStatuses[slotIndex] or cachedPlotStatuses[tostring(slotIndex)]
 		local ownerId = if status then status.OwnerUserId else 0
 		local isOwnedBySelf = (ownerId == LocalPlayer.UserId)
 		local isAvailable = (ownerId == 0)
 
 		local chip = Instance.new("TextButton")
 		chip.Name = "Chip_" .. slotIndex
-		chip.Size = UDim2.new(0, 72, 0, 36)
+		chip.LayoutOrder = slotIndex
+		chip.Size = UDim2.new(0, 68, 0, 36)
 		chip.BorderSizePixel = 0
 		chip.AutoButtonColor = false
 		chip.ClipsDescendants = true
 		chip.Text = ""
+		chip.ZIndex = 27
 		chip.Parent = chipsContainer
 
 		local chipCorner = Instance.new("UICorner")
@@ -109,6 +172,7 @@ local function refreshChips()
 		chipBevel.Size = UDim2.new(1, 0, 0, 3)
 		chipBevel.Position = UDim2.new(0, 0, 1, -3)
 		chipBevel.BorderSizePixel = 0
+		chipBevel.ZIndex = 27
 		chipBevel.Parent = chip
 
 		local chipLabel = Instance.new("TextLabel")
@@ -117,6 +181,7 @@ local function refreshChips()
 		chipLabel.BackgroundTransparency = 1
 		chipLabel.Font = CheckUITheme.Typography.Font
 		chipLabel.TextSize = 12
+		chipLabel.ZIndex = 28
 		chipLabel.Parent = chip
 		addCheckUIStroke(chipLabel, 2.0)
 
@@ -130,7 +195,7 @@ local function refreshChips()
 			chipLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 			chipLabel.Text = string.format("Plot %d ★", slotIndex)
 		elseif isAvailable then
-			-- Freier Plot: Leuchtendes Lime-Grün
+			-- Freier Plot: Saftiges Lime-Grün
 			chip.Active = true
 			chipGrad.Color = ColorSequence.new{
 				ColorSequenceKeypoint.new(0, CheckUITheme.Colors.ClaimGradientTop),
@@ -145,11 +210,16 @@ local function refreshChips()
 			chipScale.Parent = chip
 			CheckUIController.bindButtonAnimations(chip, chipScale, 1.06, 0.94)
 
-			chip.MouseButton1Click:Connect(function()
+			local function onPickPlot()
+				chip.Active = false
+				PlotSelectionController.FastClose()
 				ClaimPlotIntentEvent:FireServer(slotIndex)
-			end)
+			end
+
+			chip.Activated:Connect(onPickPlot)
+			chip.MouseButton1Click:Connect(onPickPlot)
 		else
-			-- Belegter Plot: Gedimmtes Slate-Grau
+			-- Belegt: Gedecktes Slate-Grau
 			chip.Active = false
 			chipGrad.Color = ColorSequence.new{
 				ColorSequenceKeypoint.new(0, Color3.fromRGB(90, 100, 110)),
@@ -162,15 +232,7 @@ local function refreshChips()
 	end
 end
 
--- Bricht den Auto-Dismiss-Timer ab
-local function cancelAutoDismiss()
-	if autoDismissThread then
-		task.cancel(autoDismissThread)
-		autoDismissThread = nil
-	end
-end
-
--- Startet den 12-Sekunden-Timer, der die Infobox sanft in den oberen Pill-Button minimiert
+-- Startet den 12-Sekunden-Timer zum automatischen Minimieren
 local function startAutoDismiss()
 	cancelAutoDismiss()
 
@@ -210,72 +272,17 @@ function PlotSelectionController.Open()
 		cardScale.Scale = targetScale
 	end
 
-	-- Flüssige Slide-Down Animation
-	infoCard.Position = UDim2.new(0.5, 0, 0, -150)
+	infoCard.Position = UDim2.new(0.5, 0, 0, -180)
 	TweenService:Create(
 		infoCard,
-		TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-		{ Position = UDim2.new(0.5, 0, 0, 22) }
+		TweenInfo.new(0.38, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+		{ Position = UDim2.new(0.5, 0, 0, 20) }
 	):Play()
 
 	startAutoDismiss()
 end
 
--- Schließt / Minimiert die Infobox
-function PlotSelectionController.Close()
-	if not infoCard or not isBannerOpen then
-		return
-	end
-	isBannerOpen = false
-	cancelAutoDismiss()
-
-	-- Flüssige Slide-Up Animation
-	local tween = TweenService:Create(
-		infoCard,
-		TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-		{ Position = UDim2.new(0.5, 0, 0, -160) }
-	)
-	tween:Play()
-	tween.Completed:Connect(function()
-		if not isBannerOpen and infoCard then
-			infoCard.Visible = false
-		end
-	end)
-
-	-- Falls der Spieler noch keinen Plot hat, bleibt der dezente Pill-Button sichtbar
-	if not playerHasPlot and topPillBtn then
-		topPillBtn.Visible = true
-	end
-end
-
--- Zeigt einen kurzen Erfolgs-Zustand an, bevor die Infobox verschwindet
-local function playCelebrationDismiss(claimedIndex: number)
-	cancelAutoDismiss()
-	if not infoCard then
-		return
-	end
-
-	if titleLabel then
-		titleLabel.Text = "🎉 BASIS ERFOLGREICH GEWÄHLT!"
-		titleLabel.TextColor3 = Color3.fromRGB(105, 225, 0)
-	end
-	if subtitleLabel then
-		subtitleLabel.Text = string.format("Plot %d gehört dir! Teleportiere zur Basis...", claimedIndex)
-		subtitleLabel.TextColor3 = Color3.fromRGB(220, 255, 180)
-	end
-	if cardStroke then
-		cardStroke.Color = Color3.fromRGB(105, 225, 0)
-	end
-
-	task.delay(1.8, function()
-		PlotSelectionController.Close()
-		if topPillBtn then
-			topPillBtn.Visible = false
-		end
-	end)
-end
-
--- Erstellt das UI (Kompakter schwebender Banner + Top-Pill-Button)
+-- Erstellt die Infobox & den dezenten Top-Pill-Button
 local function createPlotSelectionGUI()
 	local playerGui = LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui
 
@@ -291,7 +298,7 @@ local function createPlotSelectionGUI()
 	local banner = Instance.new("Frame")
 	banner.Name = "PlotInfoBanner"
 	banner.Size = UDim2.new(0, 560, 0, 108)
-	banner.Position = UDim2.new(0.5, 0, 0, -160)
+	banner.Position = UDim2.new(0.5, 0, 0, -180)
 	banner.AnchorPoint = Vector2.new(0.5, 0)
 	banner.BackgroundColor3 = CheckUITheme.Colors.CardBackground
 	banner.BorderSizePixel = 0
@@ -319,7 +326,7 @@ local function createPlotSelectionGUI()
 	cScale.Parent = banner
 	cardScale = cScale
 
-	-- Oberer 2px-Glanzstreifen (Cyan Gradient)
+	-- Oberer Cyan-Glanzstreifen
 	local topAccent = Instance.new("Frame")
 	topAccent.Name = "TopAccent"
 	topAccent.Size = UDim2.new(1, 0, 0, 3)
@@ -367,7 +374,7 @@ local function createPlotSelectionGUI()
 	-- Titel & Untertitel
 	local title = Instance.new("TextLabel")
 	title.Name = "Title"
-	title.Size = UDim2.new(1, -95, 0, 20)
+	title.Size = UDim2.new(1, -100, 0, 20)
 	title.Position = UDim2.new(0, 54, 0, 8)
 	title.BackgroundTransparency = 1
 	title.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -382,7 +389,7 @@ local function createPlotSelectionGUI()
 
 	local subtitle = Instance.new("TextLabel")
 	subtitle.Name = "Subtitle"
-	subtitle.Size = UDim2.new(1, -95, 0, 16)
+	subtitle.Size = UDim2.new(1, -100, 0, 16)
 	subtitle.Position = UDim2.new(0, 54, 0, 27)
 	subtitle.BackgroundTransparency = 1
 	subtitle.TextColor3 = Color3.fromRGB(180, 220, 240)
@@ -395,19 +402,18 @@ local function createPlotSelectionGUI()
 	addCheckUIStroke(subtitle, 1.8)
 	subtitleLabel = subtitle
 
-	-- Schließen-Button [X] (oben rechts)
-	local closeBtn = Instance.new("TextButton")
+	-- 3D Beveled Schließen-Button [X] (Sauberes ASCII "X")
+	local closeBtn = Instance.new("ImageButton")
 	closeBtn.Name = "CloseBtn"
-	closeBtn.Size = UDim2.new(0, 24, 0, 24)
-	closeBtn.Position = UDim2.new(1, -32, 0, 10)
-	closeBtn.BackgroundColor3 = Color3.fromRGB(120, 20, 20)
+	closeBtn.Size = UDim2.new(0, 30, 0, 30)
+	closeBtn.Position = UDim2.new(1, -40, 0, 10)
+	closeBtn.BackgroundColor3 = CheckUITheme.Colors.CloseBase
 	closeBtn.BorderSizePixel = 0
 	closeBtn.AutoButtonColor = false
-	closeBtn.Text = "✕"
-	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	closeBtn.Font = CheckUITheme.Typography.Font
-	closeBtn.TextSize = 13
-	closeBtn.ZIndex = 28
+	closeBtn.ClipsDescendants = false
+	closeBtn.Active = true
+	closeBtn.Selectable = true
+	closeBtn.ZIndex = 30
 	closeBtn.Parent = banner
 
 	local clCorner = Instance.new("UICorner")
@@ -416,13 +422,54 @@ local function createPlotSelectionGUI()
 
 	local clStroke = Instance.new("UIStroke")
 	clStroke.Color = Color3.fromRGB(0, 0, 0)
-	clStroke.Thickness = 1.6
+	clStroke.Thickness = 2.0
+	clStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	clStroke.Parent = closeBtn
-	addCheckUIStroke(closeBtn, 2.0)
 
-	closeBtn.MouseButton1Click:Connect(function()
+	local clFace = Instance.new("Frame")
+	clFace.Name = "Face"
+	clFace.Size = UDim2.new(1, 0, 1, -3)
+	clFace.Position = UDim2.new(0, 0, 0, 0)
+	clFace.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	clFace.BorderSizePixel = 0
+	clFace.Active = false
+	clFace.ZIndex = 31
+	clFace.Parent = closeBtn
+
+	local clFaceGrad = Instance.new("UIGradient")
+	clFaceGrad.Rotation = 90
+	clFaceGrad.Color = ColorSequence.new{
+		ColorSequenceKeypoint.new(0, CheckUITheme.Colors.CloseFaceTop),
+		ColorSequenceKeypoint.new(1, CheckUITheme.Colors.CloseFaceBottom),
+	}
+	clFaceGrad.Parent = clFace
+
+	local clLabel = Instance.new("TextLabel")
+	clLabel.Name = "XLabel"
+	clLabel.Size = UDim2.new(1, 0, 1, 0)
+	clLabel.BackgroundTransparency = 1
+	clLabel.Text = "X"
+	clLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	clLabel.Font = CheckUITheme.Typography.Font
+	clLabel.TextSize = 14
+	clLabel.Active = false
+	clLabel.Selectable = false
+	clLabel.ZIndex = 32
+	clLabel.Parent = clFace
+	addCheckUIStroke(clLabel, 2.2)
+
+	local clScale = Instance.new("UIScale")
+	clScale.Scale = 1
+	clScale.Parent = closeBtn
+	CheckUIController.bindButtonAnimations(closeBtn, clScale, 1.08, 0.92)
+
+	local function handleClose()
+		isManuallyDismissed = true
 		PlotSelectionController.Close()
-	end)
+	end
+
+	closeBtn.Activated:Connect(handleClose)
+	closeBtn.MouseButton1Click:Connect(handleClose)
 
 	-- Container für die Buttons
 	local btnRow = Instance.new("Frame")
@@ -442,17 +489,18 @@ local function createPlotSelectionGUI()
 	rowLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	rowLayout.Parent = btnRow
 
-	-- 1. Schnellwahl-Button (Goldener Amber/Cyan Look)
+	-- Schnellwahl-Button
 	local quickPickBtn = Instance.new("TextButton")
 	quickPickBtn.Name = "QuickPickBtn"
 	quickPickBtn.LayoutOrder = 0
-	quickPickBtn.Size = UDim2.new(0, 124, 0, 36)
+	quickPickBtn.Size = UDim2.new(0, 120, 0, 36)
 	quickPickBtn.BorderSizePixel = 0
 	quickPickBtn.AutoButtonColor = false
 	quickPickBtn.ClipsDescendants = true
 	quickPickBtn.Text = ""
 	quickPickBtn.ZIndex = 27
 	quickPickBtn.Parent = btnRow
+	quickPickBtnRef = quickPickBtn
 
 	local qCorner = Instance.new("UICorner")
 	qCorner.CornerRadius = UDim.new(0, 4)
@@ -477,6 +525,7 @@ local function createPlotSelectionGUI()
 	qBevel.Position = UDim2.new(0, 0, 1, -3)
 	qBevel.BackgroundColor3 = Color3.fromRGB(0, 60, 140)
 	qBevel.BorderSizePixel = 0
+	qBevel.ZIndex = 27
 	qBevel.Parent = quickPickBtn
 
 	local qLabel = Instance.new("TextLabel")
@@ -495,11 +544,16 @@ local function createPlotSelectionGUI()
 	qScale.Parent = quickPickBtn
 	CheckUIController.bindButtonAnimations(quickPickBtn, qScale, 1.05, 0.95)
 
-	quickPickBtn.MouseButton1Click:Connect(function()
+	local function onQuickPick()
+		quickPickBtn.Active = false
+		PlotSelectionController.FastClose()
 		ClaimPlotIntentEvent:FireServer(0)
-	end)
+	end
 
-	-- Automatischer Fortschrittsbalken am unteren Rand der Infobox
+	quickPickBtn.Activated:Connect(onQuickPick)
+	quickPickBtn.MouseButton1Click:Connect(onQuickPick)
+
+	-- Automatischer Fortschrittsbalken am unteren Rand
 	local progBar = Instance.new("Frame")
 	progBar.Name = "AutoDismissProgress"
 	progBar.Size = UDim2.new(1, 0, 0, 3)
@@ -510,7 +564,6 @@ local function createPlotSelectionGUI()
 	progBar.Parent = banner
 	timerProgressBar = progBar
 
-	-- Maus-Hover hält den Timer an
 	banner.MouseEnter:Connect(cancelAutoDismiss)
 	banner.MouseLeave:Connect(startAutoDismiss)
 
@@ -551,6 +604,7 @@ local function createPlotSelectionGUI()
 	CheckUIController.bindButtonAnimations(pill, pScale, 1.05, 0.95)
 
 	pill.MouseButton1Click:Connect(function()
+		isManuallyDismissed = false
 		PlotSelectionController.Open()
 	end)
 end
@@ -575,46 +629,43 @@ function PlotSelectionController.Init()
 	updateScale()
 
 	-- Server-Events verbinden
-	PlotStatusUpdatedEvent.OnClientEvent:Connect(function(statusList: { [number]: PlotStatus }, hasPlot: boolean)
+	PlotStatusUpdatedEvent.OnClientEvent:Connect(function(statusList: { [any]: PlotStatus }, hasPlot: boolean)
 		cachedPlotStatuses = statusList or {}
-		local previouslyHadPlot = playerHasPlot
 		playerHasPlot = (hasPlot == true)
 
 		refreshChips()
 
-		if not playerHasPlot then
-			-- Spieler hat noch keinen Plot -> Infobox sanft einblenden!
-			PlotSelectionController.Open()
+		if playerHasPlot then
+			-- Spieler besitzt bereits einen Plot -> Sofort schnell schließen
+			PlotSelectionController.FastClose()
+			if topPillBtn then
+				topPillBtn.Visible = false
+			end
 		else
-			-- Spieler hat erfolgreich einen Plot beansprucht!
-			if not previouslyHadPlot and isBannerOpen then
-				local claimedIdx = 1
-				for idx, stat in pairs(cachedPlotStatuses) do
-					if stat and stat.OwnerUserId == LocalPlayer.UserId then
-						claimedIdx = idx
-						break
-					end
-				end
-				playCelebrationDismiss(claimedIdx)
-			else
-				PlotSelectionController.Close()
-				if topPillBtn then
-					topPillBtn.Visible = false
-				end
+			-- Spieler hat noch keinen Plot
+			if not isManuallyDismissed then
+				PlotSelectionController.Open()
 			end
 		end
 	end)
 
-	-- Taste [P] zum Umschalten der Infobox
+	-- Taste [P] / [Escape] zum manuellen Umschalten der Infobox
 	UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
 		if gameProcessed then
 			return
 		end
 		if input.KeyCode == Enum.KeyCode.P then
 			if isBannerOpen then
+				isManuallyDismissed = true
 				PlotSelectionController.Close()
 			else
+				isManuallyDismissed = false
 				PlotSelectionController.Open()
+			end
+		elseif input.KeyCode == Enum.KeyCode.Escape or input.KeyCode == Enum.KeyCode.ButtonB then
+			if isBannerOpen then
+				isManuallyDismissed = true
+				PlotSelectionController.Close()
 			end
 		end
 	end)
@@ -624,7 +675,7 @@ function PlotSelectionController.Init()
 		RequestPlotStatusEvent:FireServer()
 	end)
 
-	print("[PlotSelectionController] Initialisiert: Check-UI Infobox aktiv (Slide-In Banner, Auto-Dismiss, Taste [P]).")
+	print("[PlotSelectionController] Initialisiert: Check-UI Infobox aktiv (Fast-Dismiss, 3D Close [X], Taste [P]).")
 end
 
 return PlotSelectionController

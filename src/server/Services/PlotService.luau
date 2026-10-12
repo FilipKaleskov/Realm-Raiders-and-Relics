@@ -967,7 +967,12 @@ function PlotService.ClaimPlot(player: Player, plotIndex: number?): boolean
 		PlotStatusUpdatedEvent:FireClient(p, allStatus, hasPlot)
 	end
 
-	notifyPlayer(player, string.format("🎉 Plot %d erfolgreich beansprucht! Willkommen in deiner Basis.", targetIndex), false)
+	-- Erfolgs-Toast erst kurz nach dem schnellen Ausblenden der Infobox anzeigen
+	task.delay(0.28, function()
+		if player:IsDescendantOf(Players) then
+			notifyPlayer(player, string.format("Plot %d erfolgreich beansprucht! Willkommen in deiner Basis.", targetIndex), false)
+		end
+	end)
 	return true
 end
 

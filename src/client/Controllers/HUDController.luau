@@ -326,36 +326,89 @@ local function ensureGamepadCursor(parentGui: ScreenGui)
 	gamepadCursorFrame = cursor
 end
 
--- Ermittelt das anklickbare UI-Element an einer Bildschirmkoordinate
--- Findet direkte Registrierungen, HoverDetectoren ganzer Item-Karten und Standard-Buttons
-local function resolveClickableTarget(x: number, y: number): (GuiButton?, (() -> ())?)
-	local objects = PlayerGui:GetGuiObjectsAtPosition(x, y)
-	for _, obj in objects do
-		if obj == invBackdrop or obj == gamepadCursorFrame or (gamepadCursorFrame and obj:IsDescendantOf(gamepadCursorFrame)) then
-			continue
-		end
-
-		-- 1. Ist das Objekt direkt in registeredClickables registriert?
-		if registeredClickables[obj :: any] ~= nil then
-			return obj :: GuiButton, registeredClickables[obj :: any]
-		end
-
-		-- 2. Wenn der Cursor auf einem Element innerhalb einer Item-Karte liegt (Icon, Text, Rahmen):
-		-- Finde den HoverDetector der übergeordneten Karte
-		local ancestor: Instance? = obj
-		while ancestor and ancestor ~= invGridFrame and ancestor ~= invModalFrame and ancestor ~= screenGui do
-			local det = ancestor:FindFirstChild("HoverDetector")
-			if det and det:IsA("GuiButton") and registeredClickables[det] then
-				return det, registeredClickables[det]
+-- Ermittelt das anklickbare UI-Element an einer Bildschirmkoordinate (cx, cy)
+-- Nutzt präzise AbsolutePosition/AbsoluteSize Bounding-Boxes
+-- Vollständig unabhängig von GuiInset, IgnoreGuiInset oder UIScale-Verschiebungen
+local function resolveClickableTarget(cx: number, cy: number): (GuiButton?, (() -> ())?)
+	-- 1. Wenn Item Details offen ist, hat das Detail-Modal oberste Priorität
+	if isDetailOpen and itemDetailModal and itemDetailModal.Visible then
+		-- A. Header Close Button [X]
+		local dHeader = itemDetailModal:FindFirstChild("Header")
+		local dClose = if dHeader then dHeader:FindFirstChild("CloseButton") :: GuiButton? else nil
+		if dClose and dClose.Visible then
+			local p, s = dClose.AbsolutePosition, dClose.AbsoluteSize
+			if cx >= p.X and cx <= (p.X + s.X) and cy >= p.Y and cy <= (p.Y + s.Y) then
+				return dClose, registeredClickables[dClose] or function() HUDController.CloseItemDetails() end
 			end
-			ancestor = ancestor.Parent
 		end
 
-		-- 3. Sonstige allgemeine GuiButtons (z.B. CloseButton, TabButtons)
-		if obj:IsA("GuiButton") then
-			return obj, registeredClickables[obj]
+		-- B. Unterer Schließen-Button
+		local bClose = itemDetailModal:FindFirstChild("BottomCloseBtn") :: GuiButton?
+		if bClose and bClose.Visible then
+			local p, s = bClose.AbsolutePosition, bClose.AbsoluteSize
+			if cx >= p.X and cx <= (p.X + s.X) and cy >= p.Y and cy <= (p.Y + s.Y) then
+				return bClose, registeredClickables[bClose] or function() HUDController.CloseItemDetails() end
+			end
+		end
+
+		return nil, nil
+	end
+
+	-- 2. Wenn normales Inventar offen ist:
+	if isInventoryOpen and invModalFrame and invModalFrame.Visible then
+		-- A. Item Cards im Grid prüfen (nur wenn Cursor im sichtbaren Grid-Bereich liegt)
+		if invGridFrame and invGridFrame.Visible then
+			local gPos, gSize = invGridFrame.AbsolutePosition, invGridFrame.AbsoluteSize
+			if cx >= gPos.X and cx <= (gPos.X + gSize.X) and cy >= gPos.Y and cy <= (gPos.Y + gSize.Y) then
+				for _, child in invGridFrame:GetChildren() do
+					if child:IsA("Frame") and child.Visible then
+						local cPos, cSize = child.AbsolutePosition, child.AbsoluteSize
+						if cx >= cPos.X and cx <= (cPos.X + cSize.X) and cy >= cPos.Y and cy <= (cPos.Y + cSize.Y) then
+							local det = child:FindFirstChild("HoverDetector") :: GuiButton?
+							if det and registeredClickables[det] then
+								return det, registeredClickables[det]
+							end
+						end
+					end
+				end
+			end
+		end
+
+		-- B. TabBar Buttons prüfen (LB, RB und Kategorien: Alle, Waffen, Kerne, Materialien)
+		for _, tabBtn in pairs(invCategoryTabs) do
+			if tabBtn and tabBtn.Visible then
+				local tPos, tSize = tabBtn.AbsolutePosition, tabBtn.AbsoluteSize
+				if cx >= tPos.X and cx <= (tPos.X + tSize.X) and cy >= tPos.Y and cy <= (tPos.Y + tSize.Y) then
+					return tabBtn, registeredClickables[tabBtn]
+				end
+			end
+		end
+
+		if lbTabButton and lbTabButton.Visible then
+			local p, s = lbTabButton.AbsolutePosition, lbTabButton.AbsoluteSize
+			if cx >= p.X and cx <= (p.X + s.X) and cy >= p.Y and cy <= (p.Y + s.Y) then
+				return lbTabButton, registeredClickables[lbTabButton]
+			end
+		end
+
+		if rbTabButton and rbTabButton.Visible then
+			local p, s = rbTabButton.AbsolutePosition, rbTabButton.AbsoluteSize
+			if cx >= p.X and cx <= (p.X + s.X) and cy >= p.Y and cy <= (p.Y + s.Y) then
+				return rbTabButton, registeredClickables[rbTabButton]
+			end
+		end
+
+		-- C. CloseButton [X] im Header des Inventars
+		local invHeader = invModalFrame:FindFirstChild("Header")
+		local invClose = if invHeader then invHeader:FindFirstChild("CloseButton") :: GuiButton? else nil
+		if invClose and invClose.Visible then
+			local p, s = invClose.AbsolutePosition, invClose.AbsoluteSize
+			if cx >= p.X and cx <= (p.X + s.X) and cy >= p.Y and cy <= (p.Y + s.Y) then
+				return invClose, registeredClickables[invClose] or function() HUDController.CloseInventory() end
+			end
 		end
 	end
+
 	return nil, nil
 end
 
@@ -418,9 +471,10 @@ local function updateGamepadCursor(dt: number)
 		end
 	end
 
-	-- Hover-Prüfung bei aktivem Cursor
+	-- Hover-Prüfung bei aktivem Cursor basierend auf tatsächlicher Bildschirmposition des Cursor-Mittelpunkts
 	if isGamepadCursorActive and gamepadCursorFrame.Visible then
-		local foundTarget, _ = resolveClickableTarget(math.floor(gamepadCursorPos.X), math.floor(gamepadCursorPos.Y))
+		local center = gamepadCursorFrame.AbsolutePosition + (gamepadCursorFrame.AbsoluteSize * 0.5)
+		local foundTarget, _ = resolveClickableTarget(center.X, center.Y)
 
 		local ring = gamepadCursorFrame:FindFirstChild("CursorRing") :: UIStroke?
 		if foundTarget then
@@ -512,15 +566,12 @@ local function onGamepadClick()
 	end
 
 	-- Ziel ermitteln: Entweder gecachtes hoveredInteractiveButton ODER Live-Auflösung an Cursor-Position
-	local targetButton = hoveredInteractiveButton
-	local targetAction = if targetButton then registeredClickables[targetButton] else nil
+	local center = gamepadCursorFrame and (gamepadCursorFrame.AbsolutePosition + (gamepadCursorFrame.AbsoluteSize * 0.5)) or gamepadCursorPos
+	local targetButton, targetAction = resolveClickableTarget(center.X, center.Y)
 
-	if not targetButton or not targetAction then
-		local foundBtn, foundAction = resolveClickableTarget(math.floor(gamepadCursorPos.X), math.floor(gamepadCursorPos.Y))
-		if foundBtn then
-			targetButton = foundBtn
-			targetAction = foundAction
-		end
+	if not targetButton and hoveredInteractiveButton then
+		targetButton = hoveredInteractiveButton
+		targetAction = registeredClickables[hoveredInteractiveButton]
 	end
 
 	if targetButton then
@@ -718,6 +769,8 @@ local function rebuildInventoryList()
 	if not invGridFrame or not invEmptyLabel then
 		return
 	end
+
+	hoveredInteractiveButton = nil
 
 	-- Vorherige Einträge löschen (außer Layout-Elemente)
 	for _, child in invGridFrame:GetChildren() do
@@ -1814,7 +1867,7 @@ local function createHUD()
 	-- ----------------------------------------------------
 	local detailFrame = Instance.new("Frame")
 	detailFrame.Name = "ItemDetailModal"
-	detailFrame.Size = UDim2.new(0, 360, 0, 350)
+	detailFrame.Size = UDim2.new(0, 390, 0, 350)
 	detailFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 	detailFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 	detailFrame.BackgroundColor3 = CheckUITheme.Colors.Canvas
@@ -1864,9 +1917,16 @@ local function createHUD()
 	}
 	dDamierGrad.Parent = dDamier
 
-	-- Kopfzeile mit 2-Tier 3D Drop-Shadow & 3D Close Button [X]
-	local dHeader = CheckUIComponents.createHeader(detailFrame, "GEGENSTAND DETAILS", CheckUITheme.HeaderThemes.Codes)
+	-- Kopfzeile mit 2-Tier 3D Drop-Shadow & 3D Close Button [X] (Saubere Breite gegen Textüberschneidung)
+	local dHeader = CheckUIComponents.createHeader(detailFrame, "DETAILS", CheckUITheme.HeaderThemes.Codes)
 	dHeader.ZIndex = 26
+
+	local dHeaderTitle = dHeader:FindFirstChild("TitleLabel") :: TextLabel?
+	if dHeaderTitle then
+		dHeaderTitle.Text = "DETAILS"
+		dHeaderTitle.TextSize = 20
+		dHeaderTitle.Size = UDim2.new(1, -70, 0, 44)
+	end
 
 	local dCloseBtn = dHeader:FindFirstChild("CloseButton") :: ImageButton?
 	if dCloseBtn then
@@ -2464,13 +2524,26 @@ function HUDController.Init()
 		-- Wenn das Inventar geöffnet ist:
 		-- (Wichtig: Vor 'if gameProcessed' prüfen, da freezeControls ButtonA per ContextActionService sinkt!)
 		if isInventoryOpen then
-			-- 1. Klick auf Items / Buttons mit Button A (Xbox A / PS Cross), Button X (Xbox X / PS Square) oder R2
+			-- 1. Wenn Item-Detail-Infobox offen ist:
+			if isDetailOpen then
+				-- Schließen mit B, Y, Escape ODER Klick auf Schließen-Button
+				if code == Enum.KeyCode.Escape or code == Enum.KeyCode.ButtonB or code == Enum.KeyCode.ButtonY then
+					HUDController.CloseItemDetails()
+					return
+				end
+				if code == Enum.KeyCode.ButtonA or code == Enum.KeyCode.ButtonX or code == Enum.KeyCode.ButtonR2 then
+					onGamepadClick()
+					return
+				end
+			end
+
+			-- 2. Klick auf Items / Buttons mit Button A (Xbox A / PS Cross), Button X (Xbox X / PS Square) oder R2
 			if code == Enum.KeyCode.ButtonA or code == Enum.KeyCode.ButtonX or code == Enum.KeyCode.ButtonR2 then
 				onGamepadClick()
 				return
 			end
 
-			-- 2. DPad-Steuerung zum Scrollen der Inventarliste
+			-- 3. DPad-Steuerung zum Scrollen der Inventarliste
 			if code == Enum.KeyCode.DPadDown then
 				if invGridFrame then
 					invGridFrame.CanvasPosition = invGridFrame.CanvasPosition + Vector2.new(0, 75)
@@ -2481,14 +2554,6 @@ function HUDController.Init()
 					invGridFrame.CanvasPosition = Vector2.new(0, math.max(0, invGridFrame.CanvasPosition.Y - 75))
 				end
 				return
-			end
-
-			-- 3. Wenn Item-Detail-Infobox offen ist, schließe diese mit B, Y oder Escape
-			if isDetailOpen then
-				if code == Enum.KeyCode.Escape or code == Enum.KeyCode.ButtonB or code == Enum.KeyCode.ButtonY then
-					HUDController.CloseItemDetails()
-					return
-				end
 			end
 
 			-- 4. Controller Tab-Wechsel mit LB/RB bzw. L1/R1

@@ -6,3 +6,8 @@
 /*.rbxl.lock
 
 sourcemap.json
+
+# Blender backup files (temporäre Sicherungen)
+*.blend1
+*.blend2
+*.blend@

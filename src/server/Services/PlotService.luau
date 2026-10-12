@@ -808,6 +808,11 @@ local function ensurePlotsExist(): Folder
 	return plotsFolder :: Folder
 end
 
+-- Baut die 6 Plots dauerhaft in Workspace (z.B. für Edit-Modus / Studio Command Bar)
+function PlotService.BuildPlotsInStudio(): Folder
+	return ensurePlotsExist()
+end
+
 -- Berechnet das aktuelle CPS eines Spielers
 function PlotService.CalculateCPS(player: Player): number
 	local data = DataManager.Get(player)

@@ -17,6 +17,15 @@ local Services = Server:WaitForChild("Services")
 local DataManagerModule = Services:WaitForChild("DataManager") :: ModuleScript
 local DataManager = require(DataManagerModule)
 
+local RaidService = nil
+local function getRaidService(): any
+	if not RaidService then
+		local mod = Services:WaitForChild("RaidService") :: ModuleScript
+		RaidService = require(mod)
+	end
+	return RaidService
+end
+
 -- Events vorbereiten
 local function getOrCreateEventsFolder(): Folder
 	local events = Shared:FindFirstChild("Events")
@@ -43,6 +52,9 @@ end
 local EventsFolder = getOrCreateEventsFolder()
 local GoldUpdatedEvent = getOrCreateRemoteEvent(EventsFolder, "GoldUpdated")
 local NotificationEvent = getOrCreateRemoteEvent(EventsFolder, "ShowNotification")
+local PlotStatusUpdatedEvent = getOrCreateRemoteEvent(EventsFolder, "PlotStatusUpdated")
+local ClaimPlotIntentEvent = getOrCreateRemoteEvent(EventsFolder, "ClaimPlotIntent")
+local RequestPlotStatusEvent = getOrCreateRemoteEvent(EventsFolder, "RequestPlotStatus")
 
 local function notifyPlayer(player: Player, message: string, isError: boolean?)
 	NotificationEvent:FireClient(player, message, isError or false)
@@ -52,6 +64,10 @@ local PlotService = {}
 
 local PlayerPlots: { [Player]: Model } = {}
 local isInitialized = false
+
+function PlotService.GetPlayerPlot(player: Player): Model?
+	return PlayerPlots[player]
+end
 
 -- Erstellt einen visuellen Text-Indikator
 local function createBillboard(parent: Instance, text: string, offset: Vector3): BillboardGui
@@ -97,6 +113,138 @@ local function getOrCreateAttachment(parent: BasePart, name: string, localPos: V
 	att.Position = localPos
 	att.Parent = parent
 	return att
+end
+
+-- Erstellt die detaillierte Statue eines Seelenkerns (Mini-Wald-Golem mit Stufen-Runen)
+local function buildStatueOnPedestal(pedestal: BasePart, coreId: string, level: number): Model
+	-- Alten Inhalt aufräumen
+	for _, child in pedestal:GetChildren() do
+		if child.Name == "StatueModel" or child.Name == "CoreModel" then
+			child:Destroy()
+		end
+	end
+
+	local statue = Instance.new("Model")
+	statue.Name = "StatueModel"
+	statue:SetAttribute("CoreId", coreId)
+	statue:SetAttribute("Level", level)
+	statue.Parent = pedestal
+
+	-- 1. Sockel-Platte (Plinth)
+	local plinth = Instance.new("Part")
+	plinth.Name = "Plinth"
+	plinth.Size = Vector3.new(3.2, 0.6, 3.2)
+	plinth.Position = pedestal.Position + Vector3.new(0, 1.3, 0)
+	plinth.Color = Color3.fromRGB(50, 55, 50)
+	plinth.Material = Enum.Material.Slate
+	plinth.Anchored = true
+	plinth.CanCollide = false
+	plinth.Parent = statue
+
+	-- 2. Torso (Massiver alter Felsstein)
+	local torso = Instance.new("Part")
+	torso.Name = "Torso"
+	torso.Size = Vector3.new(2.4, 3.2, 1.8)
+	torso.Position = pedestal.Position + Vector3.new(0, 3.2, 0)
+	torso.Color = Color3.fromRGB(75, 80, 70)
+	torso.Material = Enum.Material.Slate
+	torso.Anchored = true
+	torso.CanCollide = false
+	torso.Parent = statue
+
+	-- 3. Leuchtender Seelenkern im Torso
+	local core = Instance.new("Part")
+	core.Name = "CoreModel"
+	core.Size = Vector3.new(1.6, 1.6, 1.2)
+	core.Position = pedestal.Position + Vector3.new(0, 3.3, -0.6)
+	core.Color = Color3.fromRGB(46, 204, 113)
+	core.Material = Enum.Material.Neon
+	core.Anchored = true
+	core.CanCollide = false
+	core.Parent = statue
+
+	local light = Instance.new("PointLight")
+	light.Color = Color3.fromRGB(46, 204, 113)
+	light.Range = 10 + (level * 2)
+	light.Brightness = 2.0 + (level * 0.5)
+	light.Parent = core
+
+	-- 4. Kopf mit leuchtenden Augen
+	local head = Instance.new("Part")
+	head.Name = "Head"
+	head.Size = Vector3.new(1.6, 1.4, 1.6)
+	head.Position = pedestal.Position + Vector3.new(0, 5.2, 0)
+	head.Color = Color3.fromRGB(80, 85, 75)
+	head.Material = Enum.Material.Cobblestone
+	head.Anchored = true
+	head.CanCollide = false
+	head.Parent = statue
+
+	local eyeL = Instance.new("Part")
+	eyeL.Name = "EyeL"
+	eyeL.Size = Vector3.new(0.3, 0.3, 0.3)
+	eyeL.Position = pedestal.Position + Vector3.new(-0.4, 5.3, -0.85)
+	eyeL.Color = Color3.fromRGB(46, 204, 113)
+	eyeL.Material = Enum.Material.Neon
+	eyeL.Anchored = true
+	eyeL.CanCollide = false
+	eyeL.Parent = statue
+
+	local eyeR = Instance.new("Part")
+	eyeR.Name = "EyeR"
+	eyeR.Size = Vector3.new(0.3, 0.3, 0.3)
+	eyeR.Position = pedestal.Position + Vector3.new(0.4, 5.3, -0.85)
+	eyeR.Color = Color3.fromRGB(46, 204, 113)
+	eyeR.Material = Enum.Material.Neon
+	eyeR.Anchored = true
+	eyeR.CanCollide = false
+	eyeR.Parent = statue
+
+	-- 5. Riesige Stein-Arme
+	local armL = Instance.new("Part")
+	armL.Name = "ArmL"
+	armL.Size = Vector3.new(1.0, 2.8, 1.0)
+	armL.Position = pedestal.Position + Vector3.new(-1.8, 3.0, 0)
+	armL.Color = Color3.fromRGB(70, 75, 65)
+	armL.Material = Enum.Material.Cobblestone
+	armL.Anchored = true
+	armL.CanCollide = false
+	armL.Parent = statue
+
+	local armR = Instance.new("Part")
+	armR.Name = "ArmR"
+	armR.Size = Vector3.new(1.0, 2.8, 1.0)
+	armR.Position = pedestal.Position + Vector3.new(1.8, 3.0, 0)
+	armR.Color = Color3.fromRGB(70, 75, 65)
+	armR.Material = Enum.Material.Cobblestone
+	armR.Anchored = true
+	armR.CanCollide = false
+	armR.Parent = statue
+
+	-- 6. Bonus-Effekt für höhere Stufen (ab Stufe 2: Leuchtende Schulter-Runen)
+	if level >= 2 then
+		local runeL = Instance.new("Part")
+		runeL.Name = "RuneL"
+		runeL.Size = Vector3.new(1.1, 0.5, 1.1)
+		runeL.Position = pedestal.Position + Vector3.new(-1.8, 4.3, 0)
+		runeL.Color = Color3.fromRGB(46, 204, 113)
+		runeL.Material = Enum.Material.Neon
+		runeL.Anchored = true
+		runeL.CanCollide = false
+		runeL.Parent = statue
+
+		local runeR = Instance.new("Part")
+		runeR.Name = "RuneR"
+		runeR.Size = Vector3.new(1.1, 0.5, 1.1)
+		runeR.Position = pedestal.Position + Vector3.new(1.8, 4.3, 0)
+		runeR.Color = Color3.fromRGB(46, 204, 113)
+		runeR.Material = Enum.Material.Neon
+		runeR.Anchored = true
+		runeR.CanCollide = false
+		runeR.Parent = statue
+	end
+
+	return statue
 end
 
 -- Richtet die ProximityPrompts für Sockel ein (Platzieren, Upgraden, Entfernen)
@@ -181,8 +329,9 @@ local function setupPedestalPrompts(pedestal: BasePart, player: Player, slotInde
 			end
 
 			local coreId = slotData.CoreId
+			local coreLevel = slotData.Level or 1
 			DataManager.SetSlot(player, slotIndex, nil)
-			DataManager.AddCore(player, coreId)
+			DataManager.AddCore(player, coreId, coreLevel)
 
 			PlotService.UpdatePlotVisuals(player)
 			local updatedData = DataManager.Get(player)
@@ -191,7 +340,43 @@ local function setupPedestalPrompts(pedestal: BasePart, player: Player, slotInde
 			end
 
 			local name = if bossInfo then bossInfo.DisplayName else coreId
-			notifyPlayer(player, string.format("%s ins Inventar zurückgelegt.", name), false)
+			notifyPlayer(player, string.format("%s (Stufe %d) ins Inventar zurückgelegt.", name, coreLevel), false)
+		end)
+
+		-- Prompt 3: Seelenkern stehlen ([E] - 3.5s) für Raids durch fremde Spieler
+		local stealPrompt = Instance.new("ProximityPrompt")
+		stealPrompt.Name = "StealPrompt"
+		stealPrompt.ActionText = "Seelenkern stehlen"
+		stealPrompt.ObjectText = string.format("Plot von %s (Sockel %d)", player.DisplayName, slotIndex)
+		stealPrompt.KeyboardKeyCode = Enum.KeyCode.E
+		stealPrompt.HoldDuration = 3.5
+		stealPrompt.MaxActivationDistance = 12
+		stealPrompt.RequiresLineOfSight = false
+		stealPrompt.Exclusivity = Enum.ProximityPromptExclusivity.OnePerButton
+		stealPrompt.Parent = centerAtt
+
+		stealPrompt.Triggered:Connect(function(triggeringPlayer: Player)
+			if triggeringPlayer == player then
+				notifyPlayer(triggeringPlayer, "Du kannst deinen eigenen Kern nicht stehlen!", true)
+				return
+			end
+
+			local char = triggeringPlayer.Character
+			local root = if char then char:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
+			local hum = if char then char:FindFirstChild("Humanoid") :: Humanoid? else nil
+			if not root or not hum or hum.Health <= 0 or (root.Position - pedestal.Position).Magnitude > 16 then
+				return
+			end
+
+			-- Prüfe, ob der Dieb bereits einen Kern trägt
+			if triggeringPlayer:GetAttribute("CarryingCore") ~= nil then
+				notifyPlayer(triggeringPlayer, "Du trägst bereits einen Seelenkern! Sichere ihn zuerst in deiner Basis.", true)
+				return
+			end
+
+			-- Führe Diebstahl über RaidService aus (mit exakter Stufe!)
+			local coreLevel = slotData.Level or 1
+			getRaidService().StartTheft(triggeringPlayer, player, slotIndex, slotData.CoreId, coreLevel)
 		end)
 	else
 		-- Prompt: Kern platzieren ([E]) - Mittig auf dem Sockel
@@ -224,10 +409,23 @@ local function setupPedestalPrompts(pedestal: BasePart, player: Player, slotInde
 				return
 			end
 
-			local coreId = data.Inventory.Cores[1]
-			local removed = DataManager.RemoveCore(player, coreId)
+			-- Wähle den besten Seelenkern (höchste Stufe) aus dem Inventar
+			local bestIndex = 1
+			local bestLevel = -1
+			for i, entry in ipairs(data.Inventory.Cores) do
+				local lvl = if typeof(entry) == "table" then (entry.Level or 1) else 1
+				if lvl > bestLevel then
+					bestLevel = lvl
+					bestIndex = i
+				end
+			end
+
+			local chosenEntry = data.Inventory.Cores[bestIndex]
+			local coreId = if typeof(chosenEntry) == "table" then chosenEntry.CoreId else chosenEntry
+			local chosenLevel = if typeof(chosenEntry) == "table" then chosenEntry.Level else 1
+			local removed, coreLevel = DataManager.RemoveCore(player, coreId, chosenLevel)
 			if removed then
-				DataManager.SetSlot(player, slotIndex, coreId)
+				DataManager.SetSlot(player, slotIndex, coreId, coreLevel)
 				PlotService.UpdatePlotVisuals(player)
 
 				local updatedData = DataManager.Get(player)
@@ -237,7 +435,7 @@ local function setupPedestalPrompts(pedestal: BasePart, player: Player, slotInde
 
 				local bossInfo = BossConfig[coreId]
 				local name = if bossInfo then bossInfo.DisplayName else coreId
-				notifyPlayer(player, string.format("%s auf Sockel %d platziert!", name, slotIndex), false)
+				notifyPlayer(player, string.format("%s (Stufe %d) auf Sockel %d platziert!", name, coreLevel, slotIndex), false)
 			end
 		end)
 	end
@@ -280,20 +478,15 @@ function PlotService.UpdatePlotVisuals(player: Player)
 					label.TextColor3 = Color3.fromRGB(46, 204, 113)
 				end
 				if billboard then
-					billboard.StudsOffset = Vector3.new(0, 4.4, 0)
+					billboard.StudsOffset = Vector3.new(0, 6.8, 0)
 				end
 
-				-- Visueller Kern (leuchtender Part), falls noch nicht vorhanden
-				if not coreModel then
-					local corePart = Instance.new("Part")
-					corePart.Name = "CoreModel"
-					corePart.Size = Vector3.new(2.5, 2.5, 2.5)
-					corePart.Position = pedestal.Position + Vector3.new(0, 2.6, 0)
-					corePart.Anchored = true
-					corePart.CanCollide = false
-					corePart.Material = Enum.Material.Neon
-					corePart.Color = Color3.fromRGB(46, 204, 113)
-					corePart.Parent = pedestal
+				-- Detaillierte Statue auf dem Sockel aufbauen
+				local existingStatue = pedestal:FindFirstChild("StatueModel")
+				if not existingStatue 
+					or existingStatue:GetAttribute("CoreId") ~= slotData.CoreId 
+					or existingStatue:GetAttribute("Level") ~= level then
+					buildStatueOnPedestal(pedestal, slotData.CoreId, level)
 				end
 			else
 				if label then
@@ -303,8 +496,13 @@ function PlotService.UpdatePlotVisuals(player: Player)
 				if billboard then
 					billboard.StudsOffset = Vector3.new(0, 2.8, 0)
 				end
-				if coreModel then
-					coreModel:Destroy()
+				local existingStatue = pedestal:FindFirstChild("StatueModel")
+				if existingStatue then
+					existingStatue:Destroy()
+				end
+				local existingCore = pedestal:FindFirstChild("CoreModel")
+				if existingCore then
+					existingCore:Destroy()
 				end
 			end
 
@@ -329,6 +527,11 @@ local function clearPlotVisuals(plot: Model)
 				coreModel:Destroy()
 			end
 
+			local statueModel = pedestal:FindFirstChild("StatueModel")
+			if statueModel then
+				statueModel:Destroy()
+			end
+
 			-- Prompts entfernen
 			for _, desc in pedestal:GetDescendants() do
 				if desc:IsA("ProximityPrompt") then
@@ -347,6 +550,34 @@ local function clearPlotVisuals(plot: Model)
 			end
 		end
 	end
+end
+
+-- Entfernt den Claim-Prompt von einem Plot-Schild
+local function removeClaimPromptFromSignPost(signPost: BasePart)
+	for _, child in signPost:GetChildren() do
+		if child:IsA("ProximityPrompt") and child.Name == "ClaimPlotPrompt" then
+			child:Destroy()
+		end
+	end
+end
+
+-- Befestigt einen Claim-Prompt an einem freien Plot-Schild
+local function attachClaimPromptToSignPost(signPost: BasePart, plotIndex: number)
+	removeClaimPromptFromSignPost(signPost)
+
+	local claimPrompt = Instance.new("ProximityPrompt")
+	claimPrompt.Name = "ClaimPlotPrompt"
+	claimPrompt.ActionText = "Plot beanspruchen"
+	claimPrompt.ObjectText = string.format("Plot %d [Frei]", plotIndex)
+	claimPrompt.KeyboardKeyCode = Enum.KeyCode.E
+	claimPrompt.HoldDuration = 0.5
+	claimPrompt.MaxActivationDistance = 14
+	claimPrompt.RequiresLineOfSight = false
+	claimPrompt.Parent = signPost
+
+	claimPrompt.Triggered:Connect(function(triggeringPlayer: Player)
+		PlotService.ClaimPlot(triggeringPlayer, plotIndex)
+	end)
 end
 
 -- Erstellt einen einzelnen Plot
@@ -380,6 +611,9 @@ local function createPlotModel(plotIndex: number, position: Vector3): Model
 	signPost.Parent = plot
 
 	createBillboard(signPost, string.format("Plot %d - [Frei]", plotIndex), Vector3.new(0, 3, 0))
+	if plotIndex ~= 2 then
+		attachClaimPromptToSignPost(signPost, plotIndex)
+	end
 
 	-- Sockel-Ordner
 	local pedestalsFolder = Instance.new("Folder")
@@ -410,6 +644,118 @@ local function createPlotModel(plotIndex: number, position: Vector3): Model
 	return plot
 end
 
+-- Richtet einen reservierten NPC-Plot (Plot 2) mit einer stehlbaren Wald-Golem Statue für Testzwecke ein
+local function setupTestRaidPlot(plot: Model)
+	plot:SetAttribute("OwnerUserId", 999999)
+	plot:SetAttribute("OwnerName", "Rivale (Test-NPC)")
+
+	-- Schild aktualisieren
+	local signPost = plot:FindFirstChild("SignPost")
+	if signPost then
+		local billboard = signPost:FindFirstChild("PlotInfo") :: BillboardGui?
+		local label = if billboard then billboard:FindFirstChild("Label") :: TextLabel? else nil
+		if label then
+			label.Text = "Plot 2\nBesitzer: Rivale (Test-NPC)"
+			label.TextColor3 = Color3.fromRGB(255, 99, 71)
+		end
+	end
+
+	local pedestalsFolder = plot:FindFirstChild("Pedestals")
+	if not pedestalsFolder then
+		return
+	end
+
+	local pedestal1 = pedestalsFolder:FindFirstChild("Sockel_1")
+	if not pedestal1 or not pedestal1:IsA("BasePart") then
+		return
+	end
+
+	-- Funktion zum Aufbauen / Respawn der Test-Statue
+	local function buildTestStatue()
+		-- Alten Inhalt aufräumen
+		for _, child in pedestal1:GetChildren() do
+			if child.Name == "StatueModel" or child.Name == "CoreModel" then
+				child:Destroy()
+			end
+		end
+
+		for _, desc in pedestal1:GetDescendants() do
+			if desc:IsA("ProximityPrompt") then
+				desc:Destroy()
+			end
+		end
+
+		local centerAtt = getOrCreateAttachment(pedestal1, "PromptCenterAtt", Vector3.new(0, 0.8, 0))
+
+		-- 1. Visuelles Modell der Statue (Mini-Wald-Golem auf dem Sockel mit Stufe 2)
+		local statue = buildStatueOnPedestal(pedestal1, "ForestGolemCore", 2)
+
+		-- Billboard
+		local billboard = pedestal1:FindFirstChild("PlotInfo") :: BillboardGui?
+		local label = if billboard then billboard:FindFirstChild("Label") :: TextLabel? else nil
+		if label then
+			label.Text = "Slot 1: Wald-Golem Statue (Stufe 2)\n(+10 Gold/s)"
+			label.TextColor3 = Color3.fromRGB(46, 204, 113)
+		end
+		if billboard then
+			billboard.StudsOffset = Vector3.new(0, 6.8, 0)
+		end
+
+		-- 2. Steal-Prompt anbringen
+		local stealPrompt = Instance.new("ProximityPrompt")
+		stealPrompt.Name = "StealPrompt"
+		stealPrompt.ActionText = "Seelenkern stehlen"
+		stealPrompt.ObjectText = "Plot 2 (Rivale NPC)"
+		stealPrompt.KeyboardKeyCode = Enum.KeyCode.E
+		stealPrompt.HoldDuration = 3.5
+		stealPrompt.MaxActivationDistance = 14
+		stealPrompt.RequiresLineOfSight = false
+		stealPrompt.Parent = centerAtt
+
+		stealPrompt.Triggered:Connect(function(triggeringPlayer: Player)
+			local char = triggeringPlayer.Character
+			local root = if char then char:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
+			local hum = if char then char:FindFirstChild("Humanoid") :: Humanoid? else nil
+			if not root or not hum or hum.Health <= 0 or (root.Position - pedestal1.Position).Magnitude > 18 then
+				return
+			end
+
+			if triggeringPlayer:GetAttribute("CarryingCore") ~= nil then
+				notifyPlayer(triggeringPlayer, "Du trägst bereits einen Seelenkern! Sichere ihn zuerst in deiner Basis.", true)
+				return
+			end
+
+			-- Statue optisch entfernen
+			statue:Destroy()
+			stealPrompt:Destroy()
+
+			if label then
+				label.Text = "Slot 1: [GESTOHLEN!]\n(Respawn in 45s)"
+				label.TextColor3 = Color3.fromRGB(231, 76, 60)
+			end
+			if billboard then
+				billboard.StudsOffset = Vector3.new(0, 2.8, 0)
+			end
+
+			-- Mock-Victim an RaidService übergeben (mit Stufe 2!)
+			local mockVictim = {
+				UserId = 999999,
+				DisplayName = "Rivale (Test-NPC)",
+				Name = "RivaleNPC",
+			}
+			getRaidService().StartTheft(triggeringPlayer, mockVictim, 1, "ForestGolemCore", 2)
+
+			-- Automatisch nach 45s respawnen zum erneuten Testen
+			task.delay(45, function()
+				buildTestStatue()
+				NotificationEvent:FireAllClients("✨ Auf Plot 2 (Rivale) wurde eine neue Wald-Golem Statue aufgestellt!", false)
+			end)
+		end)
+	end
+
+	buildTestStatue()
+end
+
 -- Stellt sicher, dass 4-6 Test-Plots in Workspace.Plots existieren
 local function ensurePlotsExist(): Folder
 	local plotsFolder = Workspace:FindFirstChild("Plots")
@@ -437,10 +783,26 @@ local function ensurePlotsExist(): Folder
 		for index, pos in ipairs(plotPositions) do
 			local plot = createPlotModel(index, pos)
 			plot.Parent = plotsFolder
+			if index == 2 then
+				setupTestRaidPlot(plot)
+			end
 		end
-		print("[PlotService] 6 Test-Plots erfolgreich in Workspace.Plots generiert.")
+		print("[PlotService] 6 Test-Plots generiert (Plot 2 als Rivale reserviert).")
 	else
 		print(string.format("[PlotService] %d bestehende Plots in Workspace.Plots gefunden.", #existingPlots))
+		for _, child in existingPlots do
+			if child:IsA("Model") then
+				local idx = child:GetAttribute("PlotIndex") or 0
+				if idx == 2 then
+					setupTestRaidPlot(child)
+				elseif child:GetAttribute("OwnerUserId") == 0 then
+					local sign = child:FindFirstChild("SignPost") :: BasePart?
+					if sign then
+						attachClaimPromptToSignPost(sign, idx)
+					end
+				end
+			end
+		end
 	end
 
 	return plotsFolder :: Folder
@@ -467,78 +829,166 @@ function PlotService.CalculateCPS(player: Player): number
 	return totalCPS
 end
 
--- Weist einem beitretenden Spieler einen freien Plot zu
-local function assignPlotToPlayer(player: Player)
+export type PlotStatus = {
+	PlotIndex: number,
+	OwnerUserId: number,
+	OwnerName: string,
+	IsRival: boolean,
+}
+
+-- Liefert den Status aller 6 Plots für die interaktive Plot-Auswahl
+function PlotService.GetAllPlotsStatus(): { [number]: PlotStatus }
 	local plotsFolder = Workspace:FindFirstChild("Plots")
+	local statusList: { [number]: PlotStatus } = {}
 	if not plotsFolder then
-		return
+		return statusList
 	end
 
-	for _, child in plotsFolder:GetChildren() do
-		if child:IsA("Model") and child:GetAttribute("OwnerUserId") == 0 then
-			child:SetAttribute("OwnerUserId", player.UserId)
-			child:SetAttribute("OwnerName", player.Name)
-			PlayerPlots[player] = child
-
-			-- Schild aktualisieren
-			local signPost = child:FindFirstChild("SignPost")
-			if signPost then
-				local billboard = signPost:FindFirstChild("PlotInfo") :: BillboardGui?
-				local label = if billboard then billboard:FindFirstChild("Label") :: TextLabel? else nil
-				if label then
-					label.Text = string.format("Plot %d\nBesitzer: %s", child:GetAttribute("PlotIndex") or 1, player.DisplayName)
-					label.TextColor3 = Color3.fromRGB(116, 185, 255)
-				end
-			end
-
-			print(string.format("[PlotService] %s wurde %s zugewiesen.", player.Name, child.Name))
-
-			-- Nach dem Laden der Daten Sockel-Visuals und Erst-Goldstand übermitteln
-			task.spawn(function()
-				local data = nil
-				for _ = 1, 15 do
-					data = DataManager.Get(player)
-					if data then
-						break
-					end
-					task.wait(0.5)
-				end
-
-				if data and player:IsDescendantOf(Players) then
-					PlotService.UpdatePlotVisuals(player)
-					GoldUpdatedEvent:FireClient(player, data.Gold, PlotService.CalculateCPS(player))
-					DataManager.SyncInventory(player)
-				end
-			end)
-
-			return
+	for slotIndex = 1, 6 do
+		local plot = plotsFolder:FindFirstChild("Plot_" .. slotIndex) :: Model?
+		if plot then
+			local ownerId = (plot:GetAttribute("OwnerUserId") :: number?) or 0
+			local ownerName = (plot:GetAttribute("OwnerName") :: string?) or ""
+			local isRival = (slotIndex == 2 or ownerId == 999999)
+			statusList[slotIndex] = {
+				PlotIndex = slotIndex,
+				OwnerUserId = ownerId,
+				OwnerName = ownerName,
+				IsRival = isRival,
+			}
 		end
 	end
 
-	warn(string.format("[PlotService] Kein freier Plot für %s verfügbar!", player.Name))
+	return statusList
+end
+
+-- Beansprucht einen bestimmten Plot für einen Spieler
+function PlotService.ClaimPlot(player: Player, plotIndex: number): boolean
+	if PlayerPlots[player] then
+		local currentPlot = PlayerPlots[player]
+		local currentIndex = currentPlot:GetAttribute("PlotIndex") or "?"
+		notifyPlayer(player, string.format("Du besitzt bereits Plot %s!", tostring(currentIndex)), true)
+		return false
+	end
+
+	if plotIndex == 2 then
+		notifyPlayer(player, "Plot 2 ist für den Test-Rivalen reserviert!", true)
+		return false
+	end
+
+	if plotIndex < 1 or plotIndex > 6 then
+		notifyPlayer(player, "Ungültiger Plot gewählt!", true)
+		return false
+	end
+
+	local plotsFolder = Workspace:FindFirstChild("Plots")
+	if not plotsFolder then
+		return false
+	end
+
+	local plot = plotsFolder:FindFirstChild("Plot_" .. plotIndex) :: Model?
+	if not plot then
+		notifyPlayer(player, "Plot existiert nicht!", true)
+		return false
+	end
+
+	local currentOwner = (plot:GetAttribute("OwnerUserId") :: number?) or 0
+	if currentOwner ~= 0 then
+		notifyPlayer(player, string.format("Plot %d ist bereits vergeben!", plotIndex), true)
+		PlotStatusUpdatedEvent:FireClient(player, PlotService.GetAllPlotsStatus(), false)
+		return false
+	end
+
+	-- Plot erfolgreich zuweisen
+	plot:SetAttribute("OwnerUserId", player.UserId)
+	plot:SetAttribute("OwnerName", player.DisplayName)
+	PlayerPlots[player] = plot
+
+	-- Schild aktualisieren & Claim-Prompt entfernen
+	local signPost = plot:FindFirstChild("SignPost") :: BasePart?
+	if signPost then
+		removeClaimPromptFromSignPost(signPost)
+		local billboard = signPost:FindFirstChild("PlotInfo") :: BillboardGui?
+		local label = if billboard then billboard:FindFirstChild("Label") :: TextLabel? else nil
+		if label then
+			label.Text = string.format("Plot %d\nBesitzer: %s", plotIndex, player.DisplayName)
+			label.TextColor3 = Color3.fromRGB(116, 185, 255)
+		end
+	end
+
+	-- Spieler zur Mitte des Plots teleportieren
+	local floor = plot:FindFirstChild("PlotFloor") :: BasePart?
+	local char = player.Character
+	if char and floor then
+		local root = char:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if root then
+			char:PivotTo(CFrame.new(floor.Position + Vector3.new(0, 3.5, 0)))
+		end
+	end
+
+	print(string.format("[PlotService] %s hat Plot %d beansprucht.", player.Name, plotIndex))
+
+	-- Nach dem Laden der Daten Sockel-Visuals und Erst-Goldstand übermitteln
+	task.spawn(function()
+		local data = nil
+		for _ = 1, 15 do
+			data = DataManager.Get(player)
+			if data then
+				break
+			end
+			task.wait(0.5)
+		end
+
+		if data and player:IsDescendantOf(Players) then
+			PlotService.UpdatePlotVisuals(player)
+			GoldUpdatedEvent:FireClient(player, data.Gold, PlotService.CalculateCPS(player))
+			DataManager.SyncInventory(player)
+		end
+	end)
+
+	-- Broadcast an alle Spieler: Plot-Status aktualisieren!
+	local allStatus = PlotService.GetAllPlotsStatus()
+	for _, p in Players:GetPlayers() do
+		local hasPlot = (PlayerPlots[p] ~= nil)
+		PlotStatusUpdatedEvent:FireClient(p, allStatus, hasPlot)
+	end
+
+	notifyPlayer(player, string.format("🎉 Plot %d erfolgreich beansprucht! Willkommen in deiner Basis.", plotIndex), false)
+	return true
 end
 
 -- Gibt den Plot frei, wenn der Spieler den Server verlässt
 local function releasePlayerPlot(player: Player)
 	local plot = PlayerPlots[player]
 	if plot then
+		local plotIndex = (plot:GetAttribute("PlotIndex") :: number?) or 1
 		plot:SetAttribute("OwnerUserId", 0)
 		plot:SetAttribute("OwnerName", "")
 
-		-- Schild zurücksetzen
-		local signPost = plot:FindFirstChild("SignPost")
+		-- Schild zurücksetzen & Claim-Prompt wieder anbringen
+		local signPost = plot:FindFirstChild("SignPost") :: BasePart?
 		if signPost then
 			local billboard = signPost:FindFirstChild("PlotInfo") :: BillboardGui?
 			local label = if billboard then billboard:FindFirstChild("Label") :: TextLabel? else nil
 			if label then
-				label.Text = string.format("Plot %d - [Frei]", plot:GetAttribute("PlotIndex") or 1)
+				label.Text = string.format("Plot %d - [Frei]", plotIndex)
 				label.TextColor3 = Color3.fromRGB(240, 240, 240)
+			end
+			if plotIndex ~= 2 then
+				attachClaimPromptToSignPost(signPost, plotIndex)
 			end
 		end
 
 		clearPlotVisuals(plot)
 		PlayerPlots[player] = nil
 		print(string.format("[PlotService] Plot von %s freigegeben.", player.Name))
+
+		-- Status-Update an verbleibende Spieler senden
+		local allStatus = PlotService.GetAllPlotsStatus()
+		for _, p in Players:GetPlayers() do
+			local hasPlot = (PlayerPlots[p] ~= nil)
+			PlotStatusUpdatedEvent:FireClient(p, allStatus, hasPlot)
+		end
 	end
 end
 
@@ -593,16 +1043,37 @@ function PlotService.Init()
 
 	ensurePlotsExist()
 
-	for _, player in Players:GetPlayers() do
-		task.spawn(assignPlotToPlayer, player)
+	-- Remote-Events anbinden
+	ClaimPlotIntentEvent.OnServerEvent:Connect(function(player: Player, plotIndex: any)
+		if typeof(plotIndex) == "number" then
+			PlotService.ClaimPlot(player, math.floor(plotIndex))
+		end
+	end)
+
+	RequestPlotStatusEvent.OnServerEvent:Connect(function(player: Player)
+		local hasPlot = (PlayerPlots[player] ~= nil)
+		PlotStatusUpdatedEvent:FireClient(player, PlotService.GetAllPlotsStatus(), hasPlot)
+	end)
+
+	local function onPlayerJoined(player: Player)
+		task.delay(1.0, function()
+			if player:IsDescendantOf(Players) and not PlayerPlots[player] then
+				-- Hat noch keinen Plot -> Auswahl-Fenster auf dem Client öffnen!
+				PlotStatusUpdatedEvent:FireClient(player, PlotService.GetAllPlotsStatus(), false)
+			end
+		end)
 	end
 
-	Players.PlayerAdded:Connect(assignPlotToPlayer)
+	for _, player in Players:GetPlayers() do
+		task.spawn(onPlayerJoined, player)
+	end
+
+	Players.PlayerAdded:Connect(onPlayerJoined)
 	Players.PlayerRemoving:Connect(releasePlayerPlot)
 
 	startCPSLoop()
 
-	print("[PlotService] Initialisiert: Plot-Zuweisung und CPS-Loop aktiv.")
+	print("[PlotService] Initialisiert: Interaktive Plot-Auswahl und CPS-Loop aktiv.")
 end
 
 return PlotService

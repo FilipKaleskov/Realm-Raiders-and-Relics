@@ -8,6 +8,43 @@ local Data = Shared:WaitForChild("Data")
 local PlayerDataModule = Data:WaitForChild("PlayerDataTemplate") :: ModuleScript
 local PlayerDataTemplate = require(PlayerDataModule)
 
+-- Garantiere, dass Shared.Events und alle RemoteEvents existieren, bevor Module geladen werden
+local function ensureRemoteEvents(): Folder
+	local eventsFolder = Shared:FindFirstChild("Events")
+	if not eventsFolder then
+		local newEvents = Instance.new("Folder")
+		newEvents.Name = "Events"
+		newEvents.Parent = Shared
+		eventsFolder = newEvents
+	end
+
+	local remoteNames = {
+		"GoldUpdated",
+		"ShowNotification",
+		"DimensionChanged",
+		"BossUpdated",
+		"InventoryUpdated",
+		"RequestInventory",
+		"AttackIntent",
+		"BossTelegraphStarted",
+		"PlotStatusUpdated",
+		"ClaimPlotIntent",
+		"RequestPlotStatus",
+	}
+
+	for _, name in remoteNames do
+		if not eventsFolder:FindFirstChild(name) then
+			local rem = Instance.new("RemoteEvent")
+			rem.Name = name
+			rem.Parent = eventsFolder
+		end
+	end
+
+	return eventsFolder :: Folder
+end
+
+ensureRemoteEvents()
+
 local Server = ServerScriptService:WaitForChild("Server")
 local Services = Server:WaitForChild("Services")
 
@@ -23,6 +60,9 @@ local PortalService = require(PortalServiceModule)
 local BossServiceModule = Services:WaitForChild("BossService") :: ModuleScript
 local BossService = require(BossServiceModule)
 
+local RaidServiceModule = Services:WaitForChild("RaidService") :: ModuleScript
+local RaidService = require(RaidServiceModule)
+
 -- Optionale Test-Umgebung (Timișoara)
 local TimisoaraModule = Services:FindFirstChild("TimisoaraEnvironment") :: ModuleScript?
 if TimisoaraModule then
@@ -35,6 +75,7 @@ DataManager.Init()
 PlotService.Init()
 PortalService.Init()
 BossService.Init()
+RaidService.Init()
 
 print("Realm Raiders Framework initialisiert")
 print(string.format(

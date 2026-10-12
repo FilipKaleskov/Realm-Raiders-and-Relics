@@ -78,6 +78,24 @@ Realm-Raiders-and-Relics/
 
 ---
 
+## ⚡ Roblox Studio Quick Commands (Befehlszeile)
+
+Füge diese Befehle unten in die **Befehlszeile (Command Bar)** in Roblox Studio ein und drücke **Enter**, um die Welt direkt im **gestoppten Zustand (Edit-Modus)** aufzubauen:
+
+### 🏰 Inseln & 3D-Dungeon-Sockel aufbauen / aktualisieren:
+```lua
+workspace.Plots:Destroy(); require(game.ServerScriptService.Server.Services.PlotService).Init()
+```
+
+### 🌌 Alles auf einmal generieren (Plots + Portale + Boss-Arena):
+```lua
+workspace.Plots:Destroy(); require(game.ServerScriptService.Server.Services.PlotService).Init(); require(game.ServerScriptService.Server.Services.PortalService).Init(); require(game.ServerScriptService.Server.Services.BossService).Init()
+```
+
+> **Tipp:** Drücke nach dem Ausführen einfach **Strg + S**, um die generierten 3D-Objekte dauerhaft in deiner Roblox-Studio-Welt zu speichern.
+
+---
+
 ## 🗺️ Roadmap & Meilensteine (MVP)
 
 - [x] **Setup:** Git-Repository, Rojo-Konfiguration und typisiertes `PlayerDataTemplate`

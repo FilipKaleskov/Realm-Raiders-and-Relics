@@ -205,7 +205,7 @@ local function updateInventoryBadge()
 end
 
 -- Erstellt eine Item-Karte im Inventar-Grid nach Check-UI Standard
-local function createItemCard(parent: Instance, itemId: string, count: number, _customCategory: string?)
+local function createItemCard(parent: Instance, itemId: string, count: number, _customCategory: string?, level: number?)
 	local itemInfo = ItemConfig[itemId]
 	local displayName = if itemInfo then itemInfo.DisplayName else itemId
 	local icon = if itemInfo then itemInfo.Icon else "📦"
@@ -213,8 +213,13 @@ local function createItemCard(parent: Instance, itemId: string, count: number, _
 	local desc = if itemInfo then itemInfo.Description else ""
 	local rarityColor = if itemInfo then itemInfo.RarityColor else Color3.fromRGB(189, 195, 199)
 
+	if level and level > 1 then
+		displayName = string.format("%s (Stufe %d)", displayName, level)
+		statsText = string.format("+%d Gold/s", 5 * level)
+	end
+
 	local card = Instance.new("Frame")
-	card.Name = "Item_" .. itemId
+	card.Name = "Item_" .. itemId .. (if level then "_" .. level else "")
 	card.Size = UDim2.new(1, 0, 1, 0)
 	card.BackgroundColor3 = CheckUITheme.Colors.CardBackground
 	card.BackgroundTransparency = 0
@@ -363,7 +368,7 @@ local function createItemCard(parent: Instance, itemId: string, count: number, _
 	end)
 
 	hoverDetector.MouseButton1Click:Connect(function()
-		HUDController.ShowItemDetails(itemId, count)
+		HUDController.ShowItemDetails(itemId, count, level)
 	end)
 end
 
@@ -390,14 +395,34 @@ local function rebuildInventoryList()
 		end
 	end
 
-	-- 2. Seelenkerne
+	-- 2. Seelenkerne (mit Stufen-Gruppierung)
 	if currentCategory == "All" or currentCategory == "Cores" then
-		local coreCounts: { [string]: number } = {}
-		for _, coreId in ipairs(cachedInventory.Cores) do
-			coreCounts[coreId] = (coreCounts[coreId] or 0) + 1
+		local coreGroups: { [string]: { coreId: string, level: number, count: number } } = {}
+		for _, coreEntry in ipairs(cachedInventory.Cores) do
+			local coreId: string
+			local level: number = 1
+			if typeof(coreEntry) == "table" then
+				coreId = coreEntry.CoreId or "ForestGolemCore"
+				level = coreEntry.Level or 1
+			else
+				coreId = tostring(coreEntry)
+				level = 1
+			end
+
+			local key = coreId .. "_" .. tostring(level)
+			if coreGroups[key] then
+				coreGroups[key].count += 1
+			else
+				coreGroups[key] = {
+					coreId = coreId,
+					level = level,
+					count = 1,
+				}
+			end
 		end
-		for coreId, count in pairs(coreCounts) do
-			createItemCard(invGridFrame, coreId, count, "Core")
+
+		for _, group in pairs(coreGroups) do
+			createItemCard(invGridFrame, group.coreId, group.count, "Core", group.level)
 			itemCount += 1
 		end
 	end
@@ -520,7 +545,7 @@ function HUDController.CloseInventory()
 end
 
 -- Zeigt die Infobox für ein ausgewähltes Item an
-function HUDController.ShowItemDetails(itemId: string, count: number)
+function HUDController.ShowItemDetails(itemId: string, count: number, level: number?)
 	if not itemDetailModal then
 		return
 	end
@@ -534,7 +559,11 @@ function HUDController.ShowItemDetails(itemId: string, count: number)
 		detailIconText.Text = itemInfo.Icon
 	end
 	if detailTitleLabel then
-		detailTitleLabel.Text = itemInfo.DisplayName
+		if level and level > 1 then
+			detailTitleLabel.Text = string.format("%s (Stufe %d)", itemInfo.DisplayName, level)
+		else
+			detailTitleLabel.Text = itemInfo.DisplayName
+		end
 	end
 	if detailRarityBadge then
 		detailRarityBadge.Text = string.format("[%s]  •  %s", itemInfo.RarityLabel, itemInfo.TypeLabel)
@@ -547,7 +576,11 @@ function HUDController.ShowItemDetails(itemId: string, count: number)
 		detailIconStroke.Color = itemInfo.RarityColor
 	end
 	if detailStatsLabel then
-		detailStatsLabel.Text = itemInfo.DetailedStats
+		if level and level > 1 then
+			detailStatsLabel.Text = string.format("+%d Gold/s auf Sockel (Stufe %d)", 5 * level, level)
+		else
+			detailStatsLabel.Text = itemInfo.DetailedStats
+		end
 		detailStatsLabel.TextColor3 = itemInfo.RarityColor
 	end
 	if detailDescLabel then
@@ -2090,6 +2123,35 @@ function HUDController.Init()
 		HUDController.SetDimension("Oberwelt")
 		onCharacter(char)
 	end)
+
+	-- Dynamischer ProximityPrompt-Filter für Plots (Besitzer sieht Upgrades, Fremde sehen Raid/Steal)
+	local function filterPlotPrompt(prompt: ProximityPrompt)
+		local model = prompt:FindFirstAncestorOfClass("Model")
+		if model and model.Parent and model.Parent.Name == "Plots" then
+			local ownerUserId = model:GetAttribute("OwnerUserId")
+			if ownerUserId and ownerUserId ~= 0 then
+				local isOwner = (ownerUserId == LocalPlayer.UserId)
+				if prompt.Name == "StealPrompt" then
+					prompt.Enabled = not isOwner
+				elseif prompt.Name == "UpgradePrompt" or prompt.Name == "RemovePrompt" or prompt.Name == "PlacePrompt" then
+					prompt.Enabled = isOwner
+				end
+			end
+		end
+	end
+
+	ProximityPromptService.PromptShown:Connect(function(prompt)
+		filterPlotPrompt(prompt)
+	end)
+
+	local plotsFolder = Workspace:FindFirstChild("Plots")
+	if plotsFolder then
+		plotsFolder.DescendantAdded:Connect(function(desc)
+			if desc:IsA("ProximityPrompt") then
+				filterPlotPrompt(desc)
+			end
+		end)
+	end
 
 	print("[HUDController] Initialisiert: Check-UI Design System HUD, GothamBlack Typografie & Responsive Engine aktiv.")
 end

@@ -18,7 +18,7 @@ export type MaterialsData = {
 export type InventoryData = {
 	Weapons: { string },
 	Materials: MaterialsData,
-	Cores: { string },
+	Cores: { any },
 }
 
 export type BaseData = {

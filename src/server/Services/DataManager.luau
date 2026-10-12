@@ -137,8 +137,8 @@ function DataManager.AddGold(player: Player, amount: number): boolean
 	return true
 end
 
--- Öffentliche API: Setzt oder leert einen Statuen-Sockel (1 bis 3)
-function DataManager.SetSlot(player: Player, slotIndex: number, coreId: string?): boolean
+-- Öffentliche API: Setzt oder leert einen Statuen-Sockel (1 bis 3) mit optionaler Stufe
+function DataManager.SetSlot(player: Player, slotIndex: number, coreId: string?, level: number?): boolean
 	local profile = Profiles[player]
 	if profile == nil or not profile:IsActive() then
 		return false
@@ -156,7 +156,7 @@ function DataManager.SetSlot(player: Player, slotIndex: number, coreId: string?)
 	if coreId ~= nil then
 		data.BaseData.Slots[slotIndex] = {
 			CoreId = coreId,
-			Level = 1,
+			Level = level or 1,
 		}
 	else
 		data.BaseData.Slots[slotIndex] = nil
@@ -173,33 +173,53 @@ function DataManager.SyncInventory(player: Player)
 	end
 end
 
--- Öffentliche API: Fügt einen Kern zum Inventar hinzu
-function DataManager.AddCore(player: Player, coreId: string): boolean
+-- Öffentliche API: Fügt einen Kern mit Stufe zum Inventar hinzu
+function DataManager.AddCore(player: Player, coreId: string, level: number?): boolean
 	local profile = Profiles[player]
 	if profile == nil or not profile:IsActive() then
 		return false
 	end
 
-	table.insert(profile.Data.Inventory.Cores, coreId)
+	table.insert(profile.Data.Inventory.Cores, {
+		CoreId = coreId,
+		Level = level or 1,
+	} :: any)
 	DataManager.SyncInventory(player)
 	return true
 end
 
--- Öffentliche API: Entfernt einen bestimmten Kern aus dem Inventar
-function DataManager.RemoveCore(player: Player, coreId: string): boolean
+-- Öffentliche API: Entfernt einen bestimmten Kern aus dem Inventar und liefert dessen Stufe zurück
+function DataManager.RemoveCore(player: Player, coreId: string, preferredLevel: number?): (boolean, number)
 	local profile = Profiles[player]
 	if profile == nil or not profile:IsActive() then
-		return false
+		return false, 1
 	end
 
 	local cores = profile.Data.Inventory.Cores
-	local index = table.find(cores, coreId)
-	if index then
-		table.remove(cores, index)
-		DataManager.SyncInventory(player)
-		return true
+	-- 1. Pass: Wenn preferredLevel angegeben ist, suche nach exakter Übereinstimmung
+	if preferredLevel ~= nil then
+		for i, entry in ipairs(cores) do
+			local cId = if typeof(entry) == "table" then (entry :: any).CoreId else entry
+			local cLevel = if typeof(entry) == "table" then ((entry :: any).Level or 1) else 1
+			if cId == coreId and cLevel == preferredLevel then
+				table.remove(cores, i)
+				DataManager.SyncInventory(player)
+				return true, cLevel
+			end
+		end
 	end
-	return false
+
+	-- 2. Pass: Erste passende CoreId
+	for i, entry in ipairs(cores) do
+		local cId = if typeof(entry) == "table" then (entry :: any).CoreId else entry
+		local cLevel = if typeof(entry) == "table" then ((entry :: any).Level or 1) else 1
+		if cId == coreId then
+			table.remove(cores, i)
+			DataManager.SyncInventory(player)
+			return true, cLevel
+		end
+	end
+	return false, 1
 end
 
 -- Öffentliche API: Fügt eine Waffe zum Inventar hinzu

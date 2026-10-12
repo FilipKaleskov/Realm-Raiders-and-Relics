@@ -984,6 +984,24 @@ local function ensurePlotsExist(): Folder
 		print(string.format("[PlotService] %d bestehende Plots in Workspace.Plots gefunden.", #existingPlots))
 		for _, child in existingPlots do
 			if child:IsA("Model") then
+				-- Veraltete flache Sockel-Blöcke automatisch durch die neuen 3D-Dungeon-Sockel ersetzen
+				local pedestalsFolder = child:FindFirstChild("Pedestals")
+				if pedestalsFolder then
+					for slotIndex = 1, 3 do
+						local ped = pedestalsFolder:FindFirstChild("Sockel_" .. slotIndex)
+						if ped and ped:IsA("Part") and not ped:FindFirstChild("Root") then
+							local oldPos = ped.Position
+							ped:Destroy()
+							local newPed = createPedestalInstance(slotIndex, oldPos)
+							newPed.Parent = pedestalsFolder
+							local pedPart = getPedestalRootPart(newPed)
+							if pedPart then
+								createBillboard(pedPart, string.format("Slot %d: [Leer]", slotIndex), Vector3.new(0, 2.5, 0))
+							end
+						end
+					end
+				end
+
 				local idx = child:GetAttribute("PlotIndex") or 0
 				if idx == 2 then
 					setupTestRaidPlot(child)

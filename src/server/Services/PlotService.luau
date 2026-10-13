@@ -566,6 +566,7 @@ local function setupPedestalPrompts(pedestal: Instance, player: Player, slotInde
 		upgradePrompt.MaxActivationDistance = 12
 		upgradePrompt.RequiresLineOfSight = false
 		upgradePrompt.Exclusivity = Enum.ProximityPromptExclusivity.OnePerButton
+		upgradePrompt:SetAttribute("OwnerUserId", player.UserId)
 		upgradePrompt.Parent = leftAtt
 
 		upgradePrompt.Triggered:Connect(function(triggeringPlayer: Player)
@@ -603,6 +604,7 @@ local function setupPedestalPrompts(pedestal: Instance, player: Player, slotInde
 		removePrompt.MaxActivationDistance = 12
 		removePrompt.RequiresLineOfSight = false
 		removePrompt.Exclusivity = Enum.ProximityPromptExclusivity.OnePerButton
+		removePrompt:SetAttribute("OwnerUserId", player.UserId)
 		removePrompt.Parent = rightAtt
 
 		removePrompt.Triggered:Connect(function(triggeringPlayer: Player)
@@ -632,7 +634,7 @@ local function setupPedestalPrompts(pedestal: Instance, player: Player, slotInde
 			notifyPlayer(player, string.format("%s (Stufe %d) ins Inventar zurückgelegt.", name, coreLevel), false)
 		end)
 
-		-- Prompt 3: Seelenkern stehlen ([E] - 3.5s) für Raids durch fremde Spieler
+		-- Prompt 3: Seelenkern stehlen ([E] - 3.5s) für Raids durch fremde Spieler (Besitzer sieht ihn gar nicht!)
 		local stealPrompt = Instance.new("ProximityPrompt")
 		stealPrompt.Name = "StealPrompt"
 		stealPrompt.ActionText = "Seelenkern stehlen"
@@ -642,11 +644,11 @@ local function setupPedestalPrompts(pedestal: Instance, player: Player, slotInde
 		stealPrompt.MaxActivationDistance = 12
 		stealPrompt.RequiresLineOfSight = false
 		stealPrompt.Exclusivity = Enum.ProximityPromptExclusivity.OnePerButton
+		stealPrompt:SetAttribute("OwnerUserId", player.UserId)
 		stealPrompt.Parent = centerAtt
 
 		stealPrompt.Triggered:Connect(function(triggeringPlayer: Player)
 			if triggeringPlayer == player then
-				notifyPlayer(triggeringPlayer, "Du kannst deinen eigenen Kern nicht stehlen!", true)
 				return
 			end
 
@@ -678,6 +680,7 @@ local function setupPedestalPrompts(pedestal: Instance, player: Player, slotInde
 		placePrompt.MaxActivationDistance = 12
 		placePrompt.RequiresLineOfSight = false
 		placePrompt.Exclusivity = Enum.ProximityPromptExclusivity.OnePerButton
+		placePrompt:SetAttribute("OwnerUserId", player.UserId)
 		placePrompt.Parent = centerAtt
 
 		placePrompt.Triggered:Connect(function(triggeringPlayer: Player)
@@ -1007,6 +1010,7 @@ local function setupTestRaidPlot(plot: Model)
 		stealPrompt.HoldDuration = 3.5
 		stealPrompt.MaxActivationDistance = 14
 		stealPrompt.RequiresLineOfSight = false
+		stealPrompt:SetAttribute("OwnerUserId", 999999)
 		stealPrompt.Parent = centerAtt
 
 		stealPrompt.Triggered:Connect(function(triggeringPlayer: Player)

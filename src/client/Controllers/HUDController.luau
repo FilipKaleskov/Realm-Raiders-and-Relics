@@ -2675,18 +2675,33 @@ function HUDController.Init()
 		onCharacter(char)
 	end)
 
-	-- Dynamischer ProximityPrompt-Filter für Plots (Besitzer sieht Upgrades, Fremde sehen Raid/Steal)
+	-- Dynamischer ProximityPrompt-Filter für Plots (Besitzer sieht Upgrades/Schmelzen/Platzieren, Fremde sehen Raid/Steal)
+	local function getPlotModel(inst: Instance): Model?
+		local current: Instance? = inst
+		while current and current ~= Workspace do
+			if current.Parent and current.Parent.Name == "Plots" and current:IsA("Model") then
+				return current :: Model
+			end
+			current = current.Parent
+		end
+		return nil
+	end
+
 	local function filterPlotPrompt(prompt: ProximityPrompt)
-		local model = prompt:FindFirstAncestorOfClass("Model")
-		if model and model.Parent and model.Parent.Name == "Plots" then
-			local ownerUserId = model:GetAttribute("OwnerUserId")
-			if ownerUserId and ownerUserId ~= 0 then
-				local isOwner = (ownerUserId == LocalPlayer.UserId)
-				if prompt.Name == "StealPrompt" then
-					prompt.Enabled = not isOwner
-				elseif prompt.Name == "UpgradePrompt" or prompt.Name == "RemovePrompt" or prompt.Name == "PlacePrompt" or prompt.Name == "SmeltPrompt" then
-					prompt.Enabled = isOwner
-				end
+		local ownerUserId = prompt:GetAttribute("OwnerUserId") :: number?
+		if not ownerUserId or ownerUserId == 0 then
+			local plotModel = getPlotModel(prompt)
+			if plotModel then
+				ownerUserId = plotModel:GetAttribute("OwnerUserId") :: number?
+			end
+		end
+
+		if ownerUserId and ownerUserId ~= 0 then
+			local isOwner = (ownerUserId == LocalPlayer.UserId)
+			if prompt.Name == "StealPrompt" then
+				prompt.Enabled = not isOwner
+			elseif prompt.Name == "UpgradePrompt" or prompt.Name == "RemovePrompt" or prompt.Name == "PlacePrompt" or prompt.Name == "SmeltPrompt" then
+				prompt.Enabled = isOwner
 			end
 		end
 	end
@@ -2695,14 +2710,65 @@ function HUDController.Init()
 		filterPlotPrompt(prompt)
 	end)
 
-	local plotsFolder = Workspace:FindFirstChild("Plots")
-	if plotsFolder then
-		plotsFolder.DescendantAdded:Connect(function(desc)
-			if desc:IsA("ProximityPrompt") then
-				filterPlotPrompt(desc)
+	ProximityPromptService.PromptButtonHoldBegan:Connect(function(prompt, player)
+		if player == LocalPlayer and prompt.Name == "StealPrompt" then
+			filterPlotPrompt(prompt)
+		end
+	end)
+
+	local function trackPlotModel(plotModel: Instance)
+		if not plotModel:IsA("Model") then return end
+		plotModel:GetAttributeChangedSignal("OwnerUserId"):Connect(function()
+			for _, desc in plotModel:GetDescendants() do
+				if desc:IsA("ProximityPrompt") then
+					filterPlotPrompt(desc)
+				end
 			end
 		end)
 	end
+
+	local function hookPlotsFolder(folder: Instance)
+		if not folder:IsA("Folder") then return end
+
+		for _, child in folder:GetChildren() do
+			trackPlotModel(child)
+		end
+		folder.ChildAdded:Connect(trackPlotModel)
+
+		-- Bereits existierende Prompts sofort filtern
+		for _, desc in folder:GetDescendants() do
+			if desc:IsA("ProximityPrompt") then
+				filterPlotPrompt(desc)
+				desc.AttributeChanged:Connect(function(attr)
+					if attr == "OwnerUserId" then
+						filterPlotPrompt(desc)
+					end
+				end)
+			end
+		end
+
+		-- Neu hinzukommende Prompts dynamisch erfassen
+		folder.DescendantAdded:Connect(function(desc)
+			if desc:IsA("ProximityPrompt") then
+				filterPlotPrompt(desc)
+				desc.AttributeChanged:Connect(function(attr)
+					if attr == "OwnerUserId" then
+						filterPlotPrompt(desc)
+					end
+				end)
+			end
+		end)
+	end
+
+	local existingPlots = Workspace:FindFirstChild("Plots")
+	if existingPlots then
+		hookPlotsFolder(existingPlots)
+	end
+	Workspace.ChildAdded:Connect(function(child)
+		if child.Name == "Plots" then
+			hookPlotsFolder(child)
+		end
+	end)
 
 	print("[HUDController] Initialisiert: Check-UI Design System HUD, GothamBlack Typografie & Responsive Engine aktiv.")
 end

@@ -403,7 +403,7 @@ end
 -- ============================================================================
 
 -- Erstellt den mystischen Altar zum Sichern oder Einschmelzen gestohlener Kerne
-function DefenseService.CreateSecuringAltar(plotModel: Model, relativePos: Vector3): Model
+function DefenseService.CreateSecuringAltar(plotModel: Model, relativePos: Vector3, ownerUserId: number?): Model
 	local altar = Instance.new("Model")
 	altar.Name = "SecuringAltar"
 	altar.Parent = plotModel
@@ -478,11 +478,13 @@ function DefenseService.CreateSecuringAltar(plotModel: Model, relativePos: Vecto
 	prompt.HoldDuration = 1.2
 	prompt.MaxActivationDistance = 14
 	prompt.RequiresLineOfSight = false
+	local plotOwnerId = ownerUserId or (plotModel:GetAttribute("OwnerUserId") :: number?) or 0
+	prompt:SetAttribute("OwnerUserId", plotOwnerId)
 	prompt.Parent = fireCore
 
 	prompt.Triggered:Connect(function(player: Player)
-		local plotOwnerId = (plotModel:GetAttribute("OwnerUserId") :: number?) or 0
-		if player.UserId ~= plotOwnerId and plotOwnerId ~= 0 then
+		local currentPlotOwnerId = (prompt:GetAttribute("OwnerUserId") :: number?) or (plotModel:GetAttribute("OwnerUserId") :: number?) or 0
+		if player.UserId ~= currentPlotOwnerId and currentPlotOwnerId ~= 0 then
 			return
 		end
 
@@ -703,7 +705,7 @@ function DefenseService.SetupPlotDefenses(plotModel: Model, ownerUserId: number)
 	-- 1. Schmelz-Altar aufbauen (Hinten rechts auf dem Plot)
 	-- WICHTIG: NUR auf echten Spieler-Plots! Niemals auf freien Plots (0) und niemals beim Rivalen (999999)!
 	if ownerUserId > 0 and ownerUserId ~= 999999 then
-		DefenseService.CreateSecuringAltar(plotModel, Vector3.new(13.5, 0.5, 13.5))
+		DefenseService.CreateSecuringAltar(plotModel, Vector3.new(13.5, 0.5, 13.5), ownerUserId)
 	end
 
 	-- 2. Zwei Stachelfallen & Wächter aufbauen (NUR wenn Plot vergeben ist oder Rivale)

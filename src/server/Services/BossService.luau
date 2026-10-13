@@ -749,6 +749,29 @@ local function setupAttackHandler()
 				if closestHum.Health <= 0 then
 					NotificationEvent:FireClient(player, string.format("⚔️ Du hast %s besiegt!", closestEnemy.DisplayName), false)
 				end
+			else
+				-- 3. Prüfe auf feindliche Wächter-Minions (z.B. bei Plot-Überfällen)
+				local plotsFolder = Workspace:FindFirstChild("Plots")
+				if plotsFolder then
+					for _, plot in plotsFolder:GetChildren() do
+						local minion = plot:FindFirstChild("GuardMinion") :: Model?
+						if minion then
+							local mOwner = (minion:GetAttribute("OwnerUserId") :: number?) or 0
+							if mOwner ~= player.UserId then
+								local mHum = minion:FindFirstChild("Humanoid") :: Humanoid?
+								local mRoot = minion:FindFirstChild("HumanoidRootPart") :: BasePart?
+								if mHum and mRoot and mHum.Health > 0 then
+									local dist = (root.Position - mRoot.Position).Magnitude
+									if dist <= 14 then
+										mHum.Health = math.max(0, mHum.Health - weaponDamage)
+										showDamageNumber(mRoot.Position, weaponDamage)
+										break
+									end
+								end
+							end
+						end
+					end
+				end
 			end
 		end
 	end)

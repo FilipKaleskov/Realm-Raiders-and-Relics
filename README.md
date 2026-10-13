@@ -9,9 +9,14 @@
 
 Füge diese Befehle unten in die **Befehlszeile (Command Bar)** in Roblox Studio ein und drücke **Enter**, um die Welt direkt im **gestoppten Zustand (Edit-Modus)** aufzubauen:
 
-### 🌌 Komplette Video-Welt generieren (Hängebrücke + Säure + Nacht-Lighting + Plots + Portale + **Golem Facelift** + **Waldbäume** + **Amethyst-Schrein** + **Brücken-Sky-Beacons**):
+### 🌌 Komplette Welt mit allen Features generieren (Hängebrücke + Plots mit **Schmelz-Altar**, **Stachelfallen**, **Wächter-Minions** + Portale + **Golem Facelift** + **Waldbäume** + **Sky-Beacons**):
 ```lua
-pcall(function() workspace.Baseplate:Destroy() end); pcall(function() workspace.Environment:Destroy() end); pcall(function() workspace.Plots:Destroy() end); require(game.ServerScriptService.Server.Services.EnvironmentService).Init(); require(game.ServerScriptService.Server.Services.PlotService).Init(); require(game.ServerScriptService.Server.Services.PortalService).Init(); require(game.ServerScriptService.Server.Services.BossService).Init()
+pcall(function() workspace.Baseplate:Destroy() end); pcall(function() workspace.Environment:Destroy() end); pcall(function() workspace.Plots:Destroy() end); require(game.ServerScriptService.Server.Services.EnvironmentService).Init(); require(game.ServerScriptService.Server.Services.PlotService).Init(); require(game.ServerScriptService.Server.Services.PortalService).Init(); require(game.ServerScriptService.Server.Services.BossService).Init(); require(game.ServerScriptService.Server.Services.DefenseService).Init()
+```
+
+### 🏰 Nur Plots & Verteidigungsanlagen aufbauen (**Schmelz-Altar**, **Stachelfallen**, **Wächter-Minions** & **Trophäenstatuen**):
+```lua
+pcall(function() workspace.Plots:Destroy() end); require(game.ServerScriptService.Server.Services.PlotService).Init(); require(game.ServerScriptService.Server.Services.DefenseService).Init()
 ```
 
 ### 🌉 Nur Video-Umgebung aufbauen (Nacht-Lighting, Säuresee, Hängebrücke, **rote Sky-Beacons**, Fackeln):
@@ -26,14 +31,18 @@ require(game.ServerScriptService.Server.Services.BossService).Init()
 
 > **Tipp:** Drücke nach dem Ausführen einfach **Strg + S**, um die generierten 3D-Objekte dauerhaft in deiner Roblox-Studio-Welt zu speichern.
 
-### 🎮 Neue Client-Features im Spiel (kein Studio-Befehl nötig):
-| Taste | Aktion |
+### 🎮 Gameplay- & Kampffunktionen im Spiel:
+| Taste / Interaktion | Aktion |
 | :--- | :--- |
-| **Linksklick / F** | Schwertschwung mit goldenem Slash-Trail |
-| **Q** | Combat-Dash mit **blauem Cyan-Flammen-Trail** |
-| **Shift** | Sprinten (erzeugt **weiße Footstep-Staubpartikel**) |
-| *Automatisch* | **🚨 BASE INTRUDED!** rotes Comic-Banner beim Opfer |
-| *Automatisch* | **+Gold Celebration-Popup** beim Boss-Kill |
+| **Linksklick / F** | Schwertangriff (trifft Bosse, feindliche Spieler & **feindliche Wächter-Minions**) |
+| **Q** | Combat-Dash mit **blauem Cyan-Flammen-Trail** (weicht Angriffen & Fallen aus) |
+| **Shift** | Sprinten (erzeugt weiße Footstep-Staubpartikel, bei Raubzug deaktiviert) |
+| **[E] am Schmelz-Altar** | Gestohlene Seelenkerne **einschmelzen** für massiven **Sofort-Gold-Bonus** |
+| **[E] am fremden Sockel** | Seelenkern stehlen (3.5s Raub-Interaktion, löst Alarm aus) |
+| **🛡️ Wächter-Minion** | Greift fremde Eindringlinge automatisch mit Steinaxt an (15 Schaden) |
+| **🩸 Stachelfallen** | Schnellen bei fremden Dieben hoch (25 Schaden + temporärer Slowdown) |
+| *Automatisch* | **🚨 BASE INTRUDED!** rotes Comic-Banner beim Opfer bei Raubzügen |
+| *Automatisch* | **+Gold Celebration-Popup** beim Besiegen des Bosses |
 
 ---
 

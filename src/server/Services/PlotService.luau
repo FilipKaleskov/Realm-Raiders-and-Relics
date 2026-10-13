@@ -26,6 +26,15 @@ local function getRaidService(): any
 	return RaidService
 end
 
+local DefenseService = nil
+local function getDefenseService(): any
+	if not DefenseService then
+		local mod = Services:WaitForChild("DefenseService") :: ModuleScript
+		DefenseService = require(mod)
+	end
+	return DefenseService
+end
+
 -- Events vorbereiten
 local function getOrCreateEventsFolder(): Folder
 	local events = Shared:FindFirstChild("Events")
@@ -297,7 +306,7 @@ local function getOrCreateAttachment(parent: BasePart, name: string, localPos: V
 	return att
 end
 
--- Erstellt die detaillierte Statue eines Seelenkerns (Mini-Wald-Golem mit Stufen-Runen)
+-- Erstellt die detaillierte Statue eines Seelenkerns (Mini-Wald-Golem mit Stufen-Runen & Mossy Facelift)
 local function buildStatueOnPedestal(pedestal: BasePart, coreId: string, level: number): Model
 	-- Alten Inhalt aufräumen
 	for _, child in pedestal:GetChildren() do
@@ -312,12 +321,12 @@ local function buildStatueOnPedestal(pedestal: BasePart, coreId: string, level: 
 	statue:SetAttribute("Level", level)
 	statue.Parent = pedestal
 
-	-- 1. Sockel-Platte (Plinth)
+	-- 1. Sockel-Platte (Plinth) mit graviertem Schiefer-Look
 	local plinth = Instance.new("Part")
 	plinth.Name = "Plinth"
-	plinth.Size = Vector3.new(3.2, 0.6, 3.2)
+	plinth.Size = Vector3.new(3.4, 0.6, 3.4)
 	plinth.Position = pedestal.Position + Vector3.new(0, 1.3, 0)
-	plinth.Color = Color3.fromRGB(50, 55, 50)
+	plinth.Color = Color3.fromRGB(48, 54, 50)
 	plinth.Material = Enum.Material.Slate
 	plinth.Anchored = true
 	plinth.CanCollide = false
@@ -326,19 +335,30 @@ local function buildStatueOnPedestal(pedestal: BasePart, coreId: string, level: 
 	-- 2. Torso (Massiver alter Felsstein)
 	local torso = Instance.new("Part")
 	torso.Name = "Torso"
-	torso.Size = Vector3.new(2.4, 3.2, 1.8)
-	torso.Position = pedestal.Position + Vector3.new(0, 3.2, 0)
+	torso.Size = Vector3.new(2.6, 3.4, 2.0)
+	torso.Position = pedestal.Position + Vector3.new(0, 3.3, 0)
 	torso.Color = Color3.fromRGB(75, 80, 70)
 	torso.Material = Enum.Material.Slate
 	torso.Anchored = true
 	torso.CanCollide = false
 	torso.Parent = statue
 
-	-- 3. Leuchtender Seelenkern im Torso
+	-- Moos-Rücken/Spine der Statue
+	local spine = Instance.new("Part")
+	spine.Name = "SpineMoss"
+	spine.Size = Vector3.new(1.4, 3.0, 0.6)
+	spine.Position = torso.Position + Vector3.new(0, 0, 1.1)
+	spine.Color = Color3.fromRGB(46, 120, 50)
+	spine.Material = Enum.Material.Grass
+	spine.Anchored = true
+	spine.CanCollide = false
+	spine.Parent = statue
+
+	-- 3. Leuchtender Seelenkern im Torso mit Partikel-Aura
 	local core = Instance.new("Part")
 	core.Name = "CoreModel"
 	core.Size = Vector3.new(1.6, 1.6, 1.2)
-	core.Position = pedestal.Position + Vector3.new(0, 3.3, -0.6)
+	core.Position = pedestal.Position + Vector3.new(0, 3.4, -0.65)
 	core.Color = Color3.fromRGB(46, 204, 113)
 	core.Material = Enum.Material.Neon
 	core.Anchored = true
@@ -348,25 +368,62 @@ local function buildStatueOnPedestal(pedestal: BasePart, coreId: string, level: 
 	local light = Instance.new("PointLight")
 	light.Color = Color3.fromRGB(46, 204, 113)
 	light.Range = 10 + (level * 2)
-	light.Brightness = 2.0 + (level * 0.5)
+	light.Brightness = 2.2 + (level * 0.6)
 	light.Parent = core
 
-	-- 4. Kopf mit leuchtenden Augen
+	-- Feine Seelen-Aura-Partikel um den Kern
+	local coreAtt = Instance.new("Attachment")
+	coreAtt.Name = "CoreAtt"
+	coreAtt.Parent = core
+
+	local aura = Instance.new("ParticleEmitter")
+	aura.Name = "StatueAura"
+	aura.Rate = 4 + (level * 3)
+	aura.Lifetime = NumberRange.new(1.5, 2.5)
+	aura.Speed = NumberRange.new(0.5, 1.2)
+	aura.SpreadAngle = Vector2.new(180, 180)
+	aura.Size = NumberSequence.new{
+		NumberSequenceKeypoint.new(0, 0.2),
+		NumberSequenceKeypoint.new(0.5, 0.4),
+		NumberSequenceKeypoint.new(1, 0),
+	}
+	aura.Color = ColorSequence.new(Color3.fromRGB(80, 255, 160))
+	aura.LightEmission = 0.9
+	aura.Transparency = NumberSequence.new{
+		NumberSequenceKeypoint.new(0, 0.7),
+		NumberSequenceKeypoint.new(0.4, 0.2),
+		NumberSequenceKeypoint.new(1, 1.0),
+	}
+	aura.Parent = coreAtt
+
+	-- 4. Kopf mit GELBEN Leuchtaugen (wie beim Boss!) & Kinn-Felsen
 	local head = Instance.new("Part")
 	head.Name = "Head"
-	head.Size = Vector3.new(1.6, 1.4, 1.6)
-	head.Position = pedestal.Position + Vector3.new(0, 5.2, 0)
+	head.Size = Vector3.new(1.8, 1.5, 1.8)
+	head.Position = pedestal.Position + Vector3.new(0, 5.3, 0)
 	head.Color = Color3.fromRGB(80, 85, 75)
 	head.Material = Enum.Material.Cobblestone
 	head.Anchored = true
 	head.CanCollide = false
 	head.Parent = statue
 
+	-- Fels-Kinn / Zähne
+	local chin = Instance.new("Part")
+	chin.Name = "Chin"
+	chin.Size = Vector3.new(1.2, 0.4, 0.8)
+	chin.Position = head.Position + Vector3.new(0, -0.65, -0.7)
+	chin.Color = Color3.fromRGB(60, 65, 58)
+	chin.Material = Enum.Material.Slate
+	chin.Anchored = true
+	chin.CanCollide = false
+	chin.Parent = statue
+
+	-- Gelb leuchtende Augen mit PointLight
 	local eyeL = Instance.new("Part")
 	eyeL.Name = "EyeL"
-	eyeL.Size = Vector3.new(0.3, 0.3, 0.3)
-	eyeL.Position = pedestal.Position + Vector3.new(-0.4, 5.3, -0.85)
-	eyeL.Color = Color3.fromRGB(46, 204, 113)
+	eyeL.Size = Vector3.new(0.32, 0.32, 0.25)
+	eyeL.Position = head.Position + Vector3.new(-0.42, 0.1, -0.95)
+	eyeL.Color = Color3.fromRGB(255, 230, 40)
 	eyeL.Material = Enum.Material.Neon
 	eyeL.Anchored = true
 	eyeL.CanCollide = false
@@ -374,19 +431,46 @@ local function buildStatueOnPedestal(pedestal: BasePart, coreId: string, level: 
 
 	local eyeR = Instance.new("Part")
 	eyeR.Name = "EyeR"
-	eyeR.Size = Vector3.new(0.3, 0.3, 0.3)
-	eyeR.Position = pedestal.Position + Vector3.new(0.4, 5.3, -0.85)
-	eyeR.Color = Color3.fromRGB(46, 204, 113)
+	eyeR.Size = Vector3.new(0.32, 0.32, 0.25)
+	eyeR.Position = head.Position + Vector3.new(0.42, 0.1, -0.95)
+	eyeR.Color = Color3.fromRGB(255, 230, 40)
 	eyeR.Material = Enum.Material.Neon
 	eyeR.Anchored = true
 	eyeR.CanCollide = false
 	eyeR.Parent = statue
 
-	-- 5. Riesige Stein-Arme
+	local eyeLight = Instance.new("PointLight")
+	eyeLight.Color = Color3.fromRGB(255, 220, 50)
+	eyeLight.Range = 6
+	eyeLight.Brightness = 2.0
+	eyeLight.Parent = eyeL
+
+	-- 5. Moos-Schulterpolster (Grass-Material, wie im Pitch-Video)
+	local mossShoulderL = Instance.new("Part")
+	mossShoulderL.Name = "MossShoulderL"
+	mossShoulderL.Size = Vector3.new(1.3, 0.65, 1.3)
+	mossShoulderL.Position = torso.Position + Vector3.new(-1.85, 1.4, 0)
+	mossShoulderL.Color = Color3.fromRGB(46, 120, 50)
+	mossShoulderL.Material = Enum.Material.Grass
+	mossShoulderL.Anchored = true
+	mossShoulderL.CanCollide = false
+	mossShoulderL.Parent = statue
+
+	local mossShoulderR = Instance.new("Part")
+	mossShoulderR.Name = "MossShoulderR"
+	mossShoulderR.Size = Vector3.new(1.3, 0.65, 1.3)
+	mossShoulderR.Position = torso.Position + Vector3.new(1.85, 1.4, 0)
+	mossShoulderR.Color = Color3.fromRGB(46, 120, 50)
+	mossShoulderR.Material = Enum.Material.Grass
+	mossShoulderR.Anchored = true
+	mossShoulderR.CanCollide = false
+	mossShoulderR.Parent = statue
+
+	-- 6. Riesige Stein-Arme
 	local armL = Instance.new("Part")
 	armL.Name = "ArmL"
-	armL.Size = Vector3.new(1.0, 2.8, 1.0)
-	armL.Position = pedestal.Position + Vector3.new(-1.8, 3.0, 0)
+	armL.Size = Vector3.new(1.1, 2.9, 1.1)
+	armL.Position = pedestal.Position + Vector3.new(-1.85, 3.0, 0)
 	armL.Color = Color3.fromRGB(70, 75, 65)
 	armL.Material = Enum.Material.Cobblestone
 	armL.Anchored = true
@@ -395,21 +479,22 @@ local function buildStatueOnPedestal(pedestal: BasePart, coreId: string, level: 
 
 	local armR = Instance.new("Part")
 	armR.Name = "ArmR"
-	armR.Size = Vector3.new(1.0, 2.8, 1.0)
-	armR.Position = pedestal.Position + Vector3.new(1.8, 3.0, 0)
+	armR.Size = Vector3.new(1.1, 2.9, 1.1)
+	armR.Position = pedestal.Position + Vector3.new(1.85, 3.0, 0)
 	armR.Color = Color3.fromRGB(70, 75, 65)
 	armR.Material = Enum.Material.Cobblestone
 	armR.Anchored = true
 	armR.CanCollide = false
 	armR.Parent = statue
 
-	-- 6. Bonus-Effekt für höhere Stufen (ab Stufe 2: Leuchtende Schulter-Runen)
+	-- 7. Bonus-Effekte für höhere Stufen:
+	-- Stufe 2+: Goldene Runen auf den Moos-Schultern
 	if level >= 2 then
 		local runeL = Instance.new("Part")
 		runeL.Name = "RuneL"
-		runeL.Size = Vector3.new(1.1, 0.5, 1.1)
-		runeL.Position = pedestal.Position + Vector3.new(-1.8, 4.3, 0)
-		runeL.Color = Color3.fromRGB(46, 204, 113)
+		runeL.Size = Vector3.new(0.8, 0.25, 0.8)
+		runeL.Position = mossShoulderL.Position + Vector3.new(0, 0.4, 0)
+		runeL.Color = Color3.fromRGB(255, 215, 0)
 		runeL.Material = Enum.Material.Neon
 		runeL.Anchored = true
 		runeL.CanCollide = false
@@ -417,13 +502,30 @@ local function buildStatueOnPedestal(pedestal: BasePart, coreId: string, level: 
 
 		local runeR = Instance.new("Part")
 		runeR.Name = "RuneR"
-		runeR.Size = Vector3.new(1.1, 0.5, 1.1)
-		runeR.Position = pedestal.Position + Vector3.new(1.8, 4.3, 0)
-		runeR.Color = Color3.fromRGB(46, 204, 113)
+		runeR.Size = Vector3.new(0.8, 0.25, 0.8)
+		runeR.Position = mossShoulderR.Position + Vector3.new(0, 0.4, 0)
+		runeR.Color = Color3.fromRGB(255, 215, 0)
 		runeR.Material = Enum.Material.Neon
 		runeR.Anchored = true
 		runeR.CanCollide = false
 		runeR.Parent = statue
+	end
+
+	-- Stufe 3+: 3 schwebende Runen-Kristalle um die Statue
+	if level >= 3 then
+		for angleIdx = 1, 3 do
+			local rad = (angleIdx / 3) * math.pi * 2
+			local orbitPos = torso.Position + Vector3.new(math.cos(rad) * 2.8, 0.6, math.sin(rad) * 2.8)
+			local orbitCrystal = Instance.new("Part")
+			orbitCrystal.Name = "OrbitCrystal_" .. angleIdx
+			orbitCrystal.Size = Vector3.new(0.5, 1.0, 0.5)
+			orbitCrystal.Position = orbitPos
+			orbitCrystal.Color = Color3.fromRGB(0, 230, 180)
+			orbitCrystal.Material = Enum.Material.Neon
+			orbitCrystal.Anchored = true
+			orbitCrystal.CanCollide = false
+			orbitCrystal.Parent = statue
+		end
 	end
 
 	return statue
@@ -825,6 +927,8 @@ local function createPlotModel(plotIndex: number, position: Vector3): Model
 		end
 	end
 
+	getDefenseService().SetupPlotDefenses(plot, 0)
+
 	return plot
 end
 
@@ -832,6 +936,7 @@ end
 local function setupTestRaidPlot(plot: Model)
 	plot:SetAttribute("OwnerUserId", 999999)
 	plot:SetAttribute("OwnerName", "Rivale (Test-NPC)")
+	getDefenseService().SetupPlotDefenses(plot, 999999)
 
 	-- Schild aktualisieren
 	local signPost = plot:FindFirstChild("SignPost")
@@ -937,10 +1042,9 @@ local function setupTestRaidPlot(plot: Model)
 			}
 			getRaidService().StartTheft(triggeringPlayer, mockVictim, 1, "ForestGolemCore", 2)
 
-			-- Automatisch nach 45s respawnen zum erneuten Testen
+			-- Automatisch nach 45s respawnen zum erneuten Testen (ohne störenden Broadcast)
 			task.delay(45, function()
 				buildTestStatue()
-				NotificationEvent:FireAllClients("✨ Auf Plot 2 (Rivale) wurde eine neue Wald-Golem Statue aufgestellt!", false)
 			end)
 		end)
 	end
@@ -1003,9 +1107,12 @@ local function ensurePlotsExist(): Folder
 				end
 
 				local idx = child:GetAttribute("PlotIndex") or 0
+				local ownerId = child:GetAttribute("OwnerUserId") or 0
+				getDefenseService().SetupPlotDefenses(child, ownerId)
+
 				if idx == 2 then
 					setupTestRaidPlot(child)
-				elseif child:GetAttribute("OwnerUserId") == 0 then
+				elseif ownerId == 0 then
 					local sign = child:FindFirstChild("SignPost") :: BasePart?
 					if sign then
 						attachClaimPromptToSignPost(sign, idx)
@@ -1182,6 +1289,8 @@ function PlotService.ClaimPlot(player: Player, plotIndex: number?): boolean
 		end
 	end)
 
+	getDefenseService().SetupPlotDefenses(plot, player.UserId)
+
 	-- Broadcast an alle Spieler: Plot-Status aktualisieren!
 	local allStatus = PlotService.GetAllPlotsStatus()
 	for _, p in Players:GetPlayers() do
@@ -1221,6 +1330,7 @@ local function releasePlayerPlot(player: Player)
 		end
 
 		clearPlotVisuals(plot)
+		getDefenseService().SetupPlotDefenses(plot, 0)
 		PlayerPlots[player] = nil
 		print(string.format("[PlotService] Plot von %s freigegeben.", player.Name))
 

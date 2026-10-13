@@ -68,6 +68,9 @@ local RaidService = require(RaidServiceModule)
 local EnvironmentServiceModule = Services:WaitForChild("EnvironmentService") :: ModuleScript
 local EnvironmentService = require(EnvironmentServiceModule)
 
+local DefenseServiceModule = Services:WaitForChild("DefenseService") :: ModuleScript
+local DefenseService = require(DefenseServiceModule)
+
 -- Optionale Test-Umgebung (Timișoara)
 local TimisoaraModule = Services:FindFirstChild("TimisoaraEnvironment") :: ModuleScript?
 if TimisoaraModule then
@@ -82,6 +85,7 @@ EnvironmentService.Init()
 PortalService.Init()
 BossService.Init()
 RaidService.Init()
+DefenseService.Init()
 
 print("Realm Raiders Framework initialisiert")
 print(string.format(

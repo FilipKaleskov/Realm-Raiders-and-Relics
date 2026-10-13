@@ -341,8 +341,14 @@ function RaidService.StartTheft(thief: Player, victim: any, slotIndex: number, c
 	}
 
 	-- 4. Benachrichtigungen & Alarme
-	NotificationEvent:FireClient(thief, string.format("⚠️ Du trägst den %s! Entkomme zu deiner Basis!", coreName), false)
-	NotificationEvent:FireAllClients(string.format("🚨 RAID: %s überfällt den Plot von %s!", thief.DisplayName, victimName), false)
+	NotificationEvent:FireClient(thief, string.format("⚠️ Du trägst den %s-Seelenkern! Entkomme zu deiner Basis!", coreName), false)
+
+	-- Alarm nur an ANDERE Spieler senden
+	for _, other in Players:GetPlayers() do
+		if other ~= thief then
+			NotificationEvent:FireClient(other, string.format("🚨 RAID: %s überfällt den Plot von %s!", thief.DisplayName, victimName), false)
+		end
+	end
 
 	print(string.format("[RaidService] %s hat %s von %s (Slot %d) gestohlen!", thief.Name, coreId, victimName, slotIndex))
 end
@@ -382,7 +388,12 @@ function RaidService.CompleteDelivery(thief: Player)
 		end
 	end
 
-	NotificationEvent:FireAllClients(string.format("🏆 %s hat den Raubzug erfolgreich abgeschlossen!", thief.DisplayName), false)
+	-- Nur an andere Spieler senden (kein Doppel-Toast für den Dieb)
+	for _, other in Players:GetPlayers() do
+		if other ~= thief and other.UserId ~= victimUserId then
+			NotificationEvent:FireClient(other, string.format("🏆 %s hat den Raubzug erfolgreich abgeschlossen!", thief.DisplayName), false)
+		end
+	end
 	print(string.format("[RaidService] %s hat %s erfolgreich in eigener Basis gesichert!", thief.Name, coreId))
 end
 

@@ -10,6 +10,7 @@ local StarterGui = game:GetService("StarterGui")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
+local TextService = game:GetService("TextService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui
@@ -2197,22 +2198,23 @@ local function createHUD()
 	end
 
 	-- ----------------------------------------------------
-	-- 7. TOAST-BENACHRICHTIGUNGEN (Oben zentriert)
+	-- 7. TOAST-BENACHRICHTIGUNGEN (Oben zentriert, dynamische Breite)
 	-- ----------------------------------------------------
 	local toast = Instance.new("Frame")
 	toast.Name = "ToastBanner"
-	toast.Size = UDim2.new(0, 380, 0, 44)
+	toast.Size = UDim2.new(0, 240, 0, 44)
 	toast.Position = UDim2.new(0.5, 0, 0, 68)
 	toast.AnchorPoint = Vector2.new(0.5, 0)
 	toast.BackgroundColor3 = CheckUITheme.Colors.CardBackground
 	toast.BackgroundTransparency = 1
 	toast.Visible = false
 	toast.ZIndex = 20
+	toast.ClipsDescendants = false
 	toast.Parent = gui
 	toastFrame = toast
 
 	local tCorner = Instance.new("UICorner")
-	tCorner.CornerRadius = UDim.new(0, 4)
+	tCorner.CornerRadius = UDim.new(0, 6)
 	tCorner.Parent = toast
 
 	local tStroke = Instance.new("UIStroke")
@@ -2225,11 +2227,12 @@ local function createHUD()
 
 	local tIcon = Instance.new("TextLabel")
 	tIcon.Name = "Icon"
-	tIcon.Size = UDim2.new(0, 36, 1, 0)
-	tIcon.Position = UDim2.new(0, 6, 0, 0)
+	tIcon.Size = UDim2.new(0, 28, 0, 28)
+	tIcon.Position = UDim2.new(0, 10, 0.5, 0)
+	tIcon.AnchorPoint = Vector2.new(0, 0.5)
 	tIcon.BackgroundTransparency = 1
 	tIcon.Text = "✅"
-	tIcon.TextSize = 20
+	tIcon.TextSize = 18
 	tIcon.TextTransparency = 1
 	tIcon.Font = CheckUITheme.Typography.Font
 	tIcon.ZIndex = 21
@@ -2238,14 +2241,17 @@ local function createHUD()
 
 	local tLabel = Instance.new("TextLabel")
 	tLabel.Name = "Message"
-	tLabel.Size = UDim2.new(1, -50, 1, 0)
+	tLabel.Size = UDim2.new(1, -54, 1, 0)
 	tLabel.Position = UDim2.new(0, 44, 0, 0)
 	tLabel.BackgroundTransparency = 1
 	tLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 	tLabel.Font = CheckUITheme.Typography.Font
-	tLabel.TextSize = 12
+	tLabel.TextSize = 13
 	tLabel.TextXAlignment = Enum.TextXAlignment.Left
+	tLabel.TextYAlignment = Enum.TextYAlignment.Center
 	tLabel.TextTransparency = 1
+	tLabel.TextWrapped = false
+	tLabel.TextTruncate = Enum.TextTruncate.None
 	tLabel.Text = ""
 	tLabel.ZIndex = 21
 	tLabel.Parent = toast
@@ -2396,7 +2402,7 @@ function HUDController.SetDimension(dimensionName: string)
 	end
 end
 
--- Zeigt Toast-Benachrichtigung an
+-- Zeigt Toast-Benachrichtigung an (Passt die Boxbreite dynamisch an die Textlänge an)
 function HUDController.ShowNotification(message: string, isError: boolean?)
 	if not toastFrame or not toastText or not toastIcon or not toastStroke then
 		return
@@ -2409,6 +2415,24 @@ function HUDController.ShowNotification(message: string, isError: boolean?)
 
 	local accentColor = if isError then Color3.fromRGB(231, 76, 60) else Color3.fromRGB(105, 225, 0)
 	local iconText = if isError then "⚠️" else "✅"
+
+	-- Dynamische Größenberechnung basierend auf der Textlänge (KEIN Hardcoding!)
+	local fontSize = 13
+	local font = CheckUITheme.Typography.Font
+	local padding = 66
+	local textBounds = TextService:GetTextSize(message, fontSize, font, Vector2.new(2000, 100))
+	local computedWidth = math.max(220, math.ceil(textBounds.X) + padding)
+
+	local viewportX = if Camera and Camera.ViewportSize.X > 0 then Camera.ViewportSize.X - 32 else 960
+	if computedWidth > viewportX then
+		toastText.TextWrapped = true
+		local multiBounds = TextService:GetTextSize(message, fontSize, font, Vector2.new(viewportX - padding, 1000))
+		local targetHeight = math.max(44, math.ceil(multiBounds.Y) + 16)
+		toastFrame.Size = UDim2.new(0, viewportX, 0, targetHeight)
+	else
+		toastText.TextWrapped = false
+		toastFrame.Size = UDim2.new(0, computedWidth, 0, 44)
+	end
 
 	toastText.Text = message
 	toastIcon.Text = iconText
@@ -2660,7 +2684,7 @@ function HUDController.Init()
 				local isOwner = (ownerUserId == LocalPlayer.UserId)
 				if prompt.Name == "StealPrompt" then
 					prompt.Enabled = not isOwner
-				elseif prompt.Name == "UpgradePrompt" or prompt.Name == "RemovePrompt" or prompt.Name == "PlacePrompt" then
+				elseif prompt.Name == "UpgradePrompt" or prompt.Name == "RemovePrompt" or prompt.Name == "PlacePrompt" or prompt.Name == "SmeltPrompt" then
 					prompt.Enabled = isOwner
 				end
 			end

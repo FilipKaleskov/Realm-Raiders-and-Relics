@@ -52,10 +52,13 @@ BossService.ARENA_PORTAL_POS = ARENA_CENTER + Vector3.new(0, 0.5, 48)
 
 local currentBossModel: Model? = nil
 local currentBossHumanoid: Humanoid? = nil
+local currentBossMover: BodyVelocity? = nil
+local currentBossRotator: BodyGyro? = nil
 local isBossAlive = false
 local isBossAttacking = false
 local isBossDying = false
 local isInitialized = false
+local lastBossAttackTime = 0
 
 local playerAttackCooldowns: { [Player]: number } = {}
 
@@ -221,21 +224,23 @@ local function spawnGolemModel(): Model
 	model.Name = "ForestGolem"
 	model.Parent = Workspace
 
-	local spawnPos = ARENA_CENTER + Vector3.new(0, 1, 0)
-
-	-- HumanoidRootPart
-	local root = createPart(model, "HumanoidRootPart", Vector3.new(4, 8, 4), spawnPos + Vector3.new(0, 5, 0), Color3.fromRGB(0, 0, 0), nil, false)
+	-- ArenaFloor liegt bei ARENA_CENTER.Y = 500, Dicke 3 -> Oberkante ArenaFloor ist exakt bei Y = 501.5
+	-- HumanoidRootPart: Schwebt sauber bei HipHeight 5.0 (Center Y = 501.5 + 5.0 + (10/2) = 511.5)
+	local root = createPart(model, "HumanoidRootPart", Vector3.new(6, 10, 6), ARENA_CENTER + Vector3.new(0, 11.5, 0), Color3.fromRGB(0, 0, 0), nil, false)
 	root.Transparency = 1
+	root.CanCollide = false
+	root.CanTouch = false
+	root.CanQuery = false
 	model.PrimaryPart = root
 
 	-- Torso (Massiver Felsen mit Steinadern)
-	local torso = createPart(model, "Torso", Vector3.new(9, 11, 7), spawnPos + Vector3.new(0, 6, 0), Color3.fromRGB(75, 80, 70), Enum.Material.Slate, true)
+	local torso = createPart(model, "Torso", Vector3.new(9, 11, 7), ARENA_CENTER + Vector3.new(0, 12.5, 0), Color3.fromRGB(75, 80, 70), Enum.Material.Slate, false)
 	-- Steinadern auf der Brust (dunklere Linien)
-	local veinH = createPart(model, "VeinH", Vector3.new(7, 0.35, 0.35), spawnPos + Vector3.new(0, 7.8, -3.6), Color3.fromRGB(38, 42, 36), Enum.Material.SmoothPlastic, false)
-	local veinV = createPart(model, "VeinV", Vector3.new(0.35, 5, 0.35), spawnPos + Vector3.new(0, 6, -3.6), Color3.fromRGB(38, 42, 36), Enum.Material.SmoothPlastic, false)
+	local veinH = createPart(model, "VeinH", Vector3.new(7, 0.35, 0.35), ARENA_CENTER + Vector3.new(0, 14.3, -3.65), Color3.fromRGB(38, 42, 36), Enum.Material.SmoothPlastic, false)
+	local veinV = createPart(model, "VeinV", Vector3.new(0.35, 5, 0.35), ARENA_CENTER + Vector3.new(0, 12.5, -3.65), Color3.fromRGB(38, 42, 36), Enum.Material.SmoothPlastic, false)
 
 	-- Leuchtender SMARAGD-Kern auf der Brust (Schwachstelle, pulsierendes Grün)
-	local corePart = createPart(model, "Core", Vector3.new(2.8, 2.8, 1.8), spawnPos + Vector3.new(0, 7, -3.6), Color3.fromRGB(46, 204, 113), Enum.Material.Neon, false)
+	local corePart = createPart(model, "Core", Vector3.new(2.8, 2.8, 1.8), ARENA_CENTER + Vector3.new(0, 13.5, -3.65), Color3.fromRGB(46, 204, 113), Enum.Material.Neon, false)
 	local coreAtt = Instance.new("Attachment")
 	coreAtt.Parent = corePart
 	local corePulse = Instance.new("ParticleEmitter")
@@ -249,14 +254,14 @@ local function spawnGolemModel(): Model
 	corePulse.Parent = coreAtt
 
 	-- Kopf (massiver Felsblock mit markanten Wangenknochen)
-	local head = createPart(model, "Head", Vector3.new(5.5, 4.5, 5), spawnPos + Vector3.new(0, 13, 0), Color3.fromRGB(85, 90, 80), Enum.Material.Slate, true)
+	local head = createPart(model, "Head", Vector3.new(5.5, 4.5, 5), ARENA_CENTER + Vector3.new(0, 19.5, 0), Color3.fromRGB(85, 90, 80), Enum.Material.Slate, false)
 	-- Wangenknochen (Felsbrocken an den Seiten des Kopfes)
-	local cheekL = createPart(model, "CheekL", Vector3.new(1.8, 1.4, 1.4), spawnPos + Vector3.new(-2.6, 12.6, -1.5), Color3.fromRGB(65, 70, 62), Enum.Material.Cobblestone, true)
-	local cheekR = createPart(model, "CheekR", Vector3.new(1.8, 1.4, 1.4), spawnPos + Vector3.new(2.6, 12.6, -1.5), Color3.fromRGB(65, 70, 62), Enum.Material.Cobblestone, true)
+	local cheekL = createPart(model, "CheekL", Vector3.new(1.8, 1.4, 1.4), ARENA_CENTER + Vector3.new(-2.6, 19.1, -1.5), Color3.fromRGB(65, 70, 62), Enum.Material.Cobblestone, false)
+	local cheekR = createPart(model, "CheekR", Vector3.new(1.8, 1.4, 1.4), ARENA_CENTER + Vector3.new(2.6, 19.1, -1.5), Color3.fromRGB(65, 70, 62), Enum.Material.Cobblestone, false)
 
 	-- LEUCHTEND GELBE AUGEN (wie im Pitch-Video!)
-	local eyeL = createPart(model, "EyeL", Vector3.new(1.1, 0.9, 0.7), spawnPos + Vector3.new(-1.5, 13.4, -2.6), Color3.fromRGB(255, 235, 40), Enum.Material.Neon, false)
-	local eyeR = createPart(model, "EyeR", Vector3.new(1.1, 0.9, 0.7), spawnPos + Vector3.new(1.5, 13.4, -2.6), Color3.fromRGB(255, 235, 40), Enum.Material.Neon, false)
+	local eyeL = createPart(model, "EyeL", Vector3.new(1.1, 0.9, 0.7), ARENA_CENTER + Vector3.new(-1.5, 19.9, -2.6), Color3.fromRGB(255, 235, 40), Enum.Material.Neon, false)
+	local eyeR = createPart(model, "EyeR", Vector3.new(1.1, 0.9, 0.7), ARENA_CENTER + Vector3.new(1.5, 19.9, -2.6), Color3.fromRGB(255, 235, 40), Enum.Material.Neon, false)
 	-- Gelbe Augenlicht-Emitter
 	local eyeLLight = Instance.new("PointLight")
 	eyeLLight.Color = Color3.fromRGB(255, 220, 0)
@@ -271,13 +276,13 @@ local function spawnGolemModel(): Model
 
 	-- FELSEN-ZÄHNE / STOSSZÄHNE am Maul
 	local teethPositions = {
-		Vector3.new(-1.8, 11.0, -2.7),
-		Vector3.new(-0.6, 10.7, -2.75),
-		Vector3.new(0.6, 10.7, -2.75),
-		Vector3.new(1.8, 11.0, -2.7),
+		Vector3.new(-1.8, 17.5, -2.7),
+		Vector3.new(-0.6, 17.2, -2.75),
+		Vector3.new(0.6, 17.2, -2.75),
+		Vector3.new(1.8, 17.5, -2.7),
 	}
 	for i, tPos in ipairs(teethPositions) do
-		local tooth = createPart(model, "Tooth_" .. i, Vector3.new(0.7, 1.2, 0.5), spawnPos + tPos, Color3.fromRGB(220, 215, 195), Enum.Material.SmoothPlastic, true)
+		local tooth = createPart(model, "Tooth_" .. i, Vector3.new(0.7, 1.2, 0.5), ARENA_CENTER + tPos, Color3.fromRGB(220, 215, 195), Enum.Material.SmoothPlastic, false)
 		local mesh = Instance.new("SpecialMesh")
 		mesh.MeshType = Enum.MeshType.Wedge
 		mesh.Parent = tooth
@@ -285,36 +290,41 @@ local function spawnGolemModel(): Model
 
 	-- Massive FELSBLOCK-FÄUSTE an den Armen
 	-- Linker Arm + Faust
-	local armL = createPart(model, "ArmL", Vector3.new(4, 10, 4), spawnPos + Vector3.new(-7, 6.5, 0), Color3.fromRGB(72, 78, 68), Enum.Material.Cobblestone, true)
-	local fistL = createPart(model, "FistL", Vector3.new(5, 5, 5), spawnPos + Vector3.new(-7.5, 0.5, 0), Color3.fromRGB(65, 70, 62), Enum.Material.Slate, true)
+	local armL = createPart(model, "ArmL", Vector3.new(4, 10, 4), ARENA_CENTER + Vector3.new(-7, 13.0, 0), Color3.fromRGB(72, 78, 68), Enum.Material.Cobblestone, false)
+	local fistL = createPart(model, "FistL", Vector3.new(5, 5, 5), ARENA_CENTER + Vector3.new(-7.5, 7.0, 0), Color3.fromRGB(65, 70, 62), Enum.Material.Slate, false)
 	-- Knöchelrisse auf der Faust
-	local knuckleL = createPart(model, "KnuckleL", Vector3.new(4.5, 0.4, 0.4), spawnPos + Vector3.new(-7.5, 3.0, -2.55), Color3.fromRGB(42, 46, 40), Enum.Material.SmoothPlastic, false)
+	local knuckleL = createPart(model, "KnuckleL", Vector3.new(4.5, 0.4, 0.4), ARENA_CENTER + Vector3.new(-7.5, 9.5, -2.55), Color3.fromRGB(42, 46, 40), Enum.Material.SmoothPlastic, false)
 	-- Rechter Arm + Faust
-	local armR = createPart(model, "ArmR", Vector3.new(4, 10, 4), spawnPos + Vector3.new(7, 6.5, 0), Color3.fromRGB(72, 78, 68), Enum.Material.Cobblestone, true)
-	local fistR = createPart(model, "FistR", Vector3.new(5, 5, 5), spawnPos + Vector3.new(7.5, 0.5, 0), Color3.fromRGB(65, 70, 62), Enum.Material.Slate, true)
-	local knuckleR = createPart(model, "KnuckleR", Vector3.new(4.5, 0.4, 0.4), spawnPos + Vector3.new(7.5, 3.0, -2.55), Color3.fromRGB(42, 46, 40), Enum.Material.SmoothPlastic, false)
+	local armR = createPart(model, "ArmR", Vector3.new(4, 10, 4), ARENA_CENTER + Vector3.new(7, 13.0, 0), Color3.fromRGB(72, 78, 68), Enum.Material.Cobblestone, false)
+	local fistR = createPart(model, "FistR", Vector3.new(5, 5, 5), ARENA_CENTER + Vector3.new(7.5, 7.0, 0), Color3.fromRGB(65, 70, 62), Enum.Material.Slate, false)
+	local knuckleR = createPart(model, "KnuckleR", Vector3.new(4.5, 0.4, 0.4), ARENA_CENTER + Vector3.new(7.5, 9.5, -2.55), Color3.fromRGB(42, 46, 40), Enum.Material.SmoothPlastic, false)
 
 	-- MOOS-SCHULTERPOLSTER (Grass-Material in sattem Waldgrün, wie im Video!)
 	local mossOffsets = {
-		Vector3.new(-5.5, 11.0, 0),   -- linke Schulter
-		Vector3.new(5.5, 11.0, 0),    -- rechte Schulter
-		Vector3.new(-4.5, 11.6, 1.5), -- links hinten
-		Vector3.new(4.5, 11.6, 1.5),  -- rechts hinten
-		Vector3.new(0, 12.2, 2.5),    -- Nacken-Moos
+		Vector3.new(-5.5, 17.5, 0),   -- linke Schulter
+		Vector3.new(5.5, 17.5, 0),    -- rechte Schulter
+		Vector3.new(-4.5, 18.1, 1.5), -- links hinten
+		Vector3.new(4.5, 18.1, 1.5),  -- rechts hinten
+		Vector3.new(0, 18.7, 2.5),    -- Nacken-Moos
 	}
 	for i, mOff in ipairs(mossOffsets) do
-		local moss = createPart(model, "Moss_" .. i, Vector3.new(2.8, 1.2, 2.8), spawnPos + mOff, Color3.fromRGB(55, 120, 45), Enum.Material.Grass, false)
+		local moss = createPart(model, "Moss_" .. i, Vector3.new(2.8, 1.2, 2.8), ARENA_CENTER + mOff, Color3.fromRGB(55, 120, 45), Enum.Material.Grass, false)
 		moss.CastShadow = false
 	end
 	-- Moos-Klumpen auf dem Kopf
-	local mossHead = createPart(model, "MossHead", Vector3.new(4.5, 1.0, 4.5), spawnPos + Vector3.new(0, 15.8, 0), Color3.fromRGB(50, 110, 38), Enum.Material.Grass, false)
+	local mossHead = createPart(model, "MossHead", Vector3.new(4.5, 1.0, 4.5), ARENA_CENTER + Vector3.new(0, 22.3, 0), Color3.fromRGB(50, 110, 38), Enum.Material.Grass, false)
 	mossHead.CastShadow = false
 
-	-- Beine (massiver, gedrungener Block-Stil)
-	local legL = createPart(model, "LegL", Vector3.new(4, 7, 4), spawnPos + Vector3.new(-2.8, 1.5, 0), Color3.fromRGB(68, 72, 62), Enum.Material.Cobblestone, true)
-	local legR = createPart(model, "LegR", Vector3.new(4, 7, 4), spawnPos + Vector3.new(2.8, 1.5, 0), Color3.fromRGB(68, 72, 62), Enum.Material.Cobblestone, true)
+	-- Beine (massiver, gedrungener Block-Stil - Unterkante sitzt auf Y = 501.5)
+	local legL = createPart(model, "LegL", Vector3.new(3.8, 7, 3.8), ARENA_CENTER + Vector3.new(-2.8, 5.0, 0), Color3.fromRGB(68, 72, 62), Enum.Material.Cobblestone, true)
+	local legR = createPart(model, "LegR", Vector3.new(3.8, 7, 3.8), ARENA_CENTER + Vector3.new(2.8, 5.0, 0), Color3.fromRGB(68, 72, 62), Enum.Material.Cobblestone, true)
 
-	-- Schweißungen (Welds)
+	-- Rutsch-Eigenschaften auf den Fuß-Kanten (verhindert Reibungs-Verkeilen am Boden)
+	local slickProps = PhysicalProperties.new(0.7, 0.02, 0, 1, 1)
+	legL.CustomPhysicalProperties = slickProps
+	legR.CustomPhysicalProperties = slickProps
+
+	-- Schweißungen (Welds): Beine, Torso & Kopf solide für echte physische Präsenz
 	for _, part in model:GetChildren() do
 		if part:IsA("BasePart") and part ~= root then
 			local weld = Instance.new("WeldConstraint")
@@ -322,22 +332,58 @@ local function spawnGolemModel(): Model
 			weld.Part1 = part
 			weld.Parent = root
 			part.Anchored = false
+			part.Massless = true
+			if part == legL or part == legR or part == torso or part == head then
+				part.CanCollide = true
+			else
+				part.CanCollide = false
+			end
 		end
 	end
 	root.Anchored = false
+	root.CanCollide = false
 
-	-- Humanoid
+	-- Strikte Server-Netzwerk-Autorität erzwingen (verhindert Client-Physik-Übernahme/Lag)
+	pcall(function()
+		root:SetNetworkOwner(nil)
+	end)
+
+	-- Unaufhaltsame, flüssige Fortbewegung & Drehung via BodyVelocity & BodyGyro
+	local mover = Instance.new("BodyVelocity")
+	mover.Name = "BossMover"
+	mover.MaxForce = Vector3.new(2e6, 0, 2e6) -- Nur horizontal! Y = 0 lässt Schwerkraft natürlich auf die Beine wirken
+	mover.Velocity = Vector3.zero
+	mover.Parent = root
+
+	local rotator = Instance.new("BodyGyro")
+	rotator.Name = "BossRotator"
+	rotator.MaxTorque = Vector3.new(4e6, 4e6, 4e6) -- Boss permanent aufrecht halten & flüssig drehen
+	rotator.CFrame = root.CFrame
+	rotator.D = 120
+	rotator.P = 4000
+	rotator.Parent = root
+
+	currentBossMover = mover
+	currentBossRotator = rotator
+
+	-- Humanoid für Lebensleiste & Schadensverwaltung
 	local humanoid = Instance.new("Humanoid")
 	humanoid.MaxHealth = BossConfig.ForestGolemCore.MaxHealth
 	humanoid.Health = humanoid.MaxHealth
-	humanoid.WalkSpeed = 9
+	humanoid.WalkSpeed = 12
+	humanoid.RequiresNeck = false
+	humanoid.BreakJointsOnDeath = false
+	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.PlatformStanding, false)
 	humanoid.Parent = model
 
 	-- Overhead-Boss-Health-Bar (nur aus der Nähe sichtbar, kein AlwaysOnTop durch Wände)
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "BossHealthBar"
 	billboard.Size = UDim2.new(0, 180, 0, 48)
-	billboard.StudsOffset = Vector3.new(0, 4, 0)
+	billboard.StudsOffset = Vector3.new(0, 4.5, 0)
 	billboard.AlwaysOnTop = false
 	billboard.MaxDistance = 75
 	billboard.Parent = head
@@ -424,6 +470,14 @@ end
 
 -- Despawnt das Boss-Modell sauber (z. B. wenn alle Spieler die Arena verlassen)
 local function despawnGolem()
+	if currentBossMover then
+		currentBossMover:Destroy()
+		currentBossMover = nil
+	end
+	if currentBossRotator then
+		currentBossRotator:Destroy()
+		currentBossRotator = nil
+	end
 	if currentBossModel then
 		currentBossModel:Destroy()
 		currentBossModel = nil
@@ -472,6 +526,16 @@ local function handleBossDefeated(killer: Player?)
 	isBossDying = true
 
 	print("[BossService] Wald-Golem besiegt!")
+
+	if currentBossMover then
+		currentBossMover.Velocity = Vector3.zero
+		currentBossMover:Destroy()
+		currentBossMover = nil
+	end
+	if currentBossRotator then
+		currentBossRotator:Destroy()
+		currentBossRotator = nil
+	end
 
 	if currentBossModel and currentBossModel.PrimaryPart then
 		-- Partikel / Einsturz
@@ -531,26 +595,32 @@ end
 local function executeTelegraphedAttack(targetPos: Vector3)
 	isBossAttacking = true
 
+	-- Boss hält sofort an für den Schlag
+	if currentBossMover then
+		currentBossMover.Velocity = Vector3.zero
+	end
+
 	local config = BossConfig.ForestGolemCore
 	local radius = config.TelegraphRadius
 	local duration = config.TelegraphDuration
 
-	-- 1. Rote Indikator-Fläche am Boden erzeugen
+	-- 1. Rote Indikator-Fläche am Boden erzeugen (sauber über der Bodenplatte bei Y = 501.58 platziert)
+	local indicatorY = ARENA_CENTER.Y + 1.58
 	local telegraph = Instance.new("Part")
 	telegraph.Name = "TelegraphIndicator"
 	telegraph.Shape = Enum.PartType.Cylinder
-	telegraph.Size = Vector3.new(0.4, radius * 2, radius * 2)
-	telegraph.CFrame = CFrame.new(Vector3.new(targetPos.X, ARENA_CENTER.Y + 1.2, targetPos.Z)) * CFrame.Angles(0, 0, math.rad(90))
+	telegraph.Size = Vector3.new(0.3, radius * 2, radius * 2)
+	telegraph.CFrame = CFrame.new(Vector3.new(targetPos.X, indicatorY, targetPos.Z)) * CFrame.Angles(0, 0, math.rad(90))
 	telegraph.Color = Color3.fromRGB(231, 76, 60)
 	telegraph.Material = Enum.Material.Neon
-	telegraph.Transparency = 0.5
+	telegraph.Transparency = 0.45
 	telegraph.Anchored = true
 	telegraph.CanCollide = false
 	telegraph.Parent = Workspace
 
 	BossTelegraphEvent:FireAllClients(targetPos, radius, duration)
 
-	-- Telegraph-Dauer abwarten (Zeit zum Ausweichen!)
+	-- Telegraph-Dauer abwarten (Zeit zum Ausweichen per Dash!)
 	task.wait(duration)
 
 	-- 2. Impact / Slam!
@@ -562,12 +632,19 @@ local function executeTelegraphedAttack(targetPos: Vector3)
 	local shockwave = Instance.new("Part")
 	shockwave.Shape = Enum.PartType.Ball
 	shockwave.Size = Vector3.new(2, 2, 2)
-	shockwave.Position = Vector3.new(targetPos.X, ARENA_CENTER.Y + 2, targetPos.Z)
+	shockwave.Position = Vector3.new(targetPos.X, ARENA_CENTER.Y + 2.0, targetPos.Z)
 	shockwave.Color = Color3.fromRGB(241, 196, 15)
 	shockwave.Material = Enum.Material.Neon
 	shockwave.Anchored = true
 	shockwave.CanCollide = false
 	shockwave.Parent = Workspace
+
+	-- Wuchtiger Einschlag-Sound
+	local slamSound = Instance.new("Sound")
+	slamSound.SoundId = "rbxassetid://138090596"
+	slamSound.Volume = 1.0
+	slamSound.Parent = shockwave
+	slamSound:Play()
 
 	local shockTween = TweenService:Create(
 		shockwave,
@@ -593,16 +670,15 @@ local function executeTelegraphedAttack(targetPos: Vector3)
 		end
 	end
 
-	task.wait(1.0) -- Erholungsphase
+	task.wait(0.8) -- Erholungsphase nach dem Schlag
 	isBossAttacking = false
 end
 
--- Boss-KI-Schleife (Server-autoritär)
+-- Boss-KI-Schleife (Server-autoritär via BodyVelocity & BodyGyro)
 local function startBossAILoop()
 	task.spawn(function()
-		local emptyArenaTicks = 0
 		while true do
-			task.wait(0.3)
+			task.wait(0.12)
 
 			-- Prüfe, ob sich noch Spieler in der Arena aufhalten
 			local playersInArena = getPlayersInArenaCount()
@@ -614,6 +690,13 @@ local function startBossAILoop()
 				continue
 			end
 
+			-- Falls Spieler in der Arena sind, aber der Boss noch nicht lebt -> sofort aufwecken!
+			if not isBossAlive and not isBossDying then
+				print("[BossService] Spieler in der Arena entdeckt - Wald-Golem erwacht!")
+				spawnGolemModel()
+				updateBossHealthUI(BossConfig.ForestGolemCore.MaxHealth, BossConfig.ForestGolemCore.MaxHealth)
+			end
+
 			if not isBossAlive or not currentBossModel or not currentBossHumanoid or isBossAttacking then
 				continue
 			end
@@ -623,9 +706,10 @@ local function startBossAILoop()
 				continue
 			end
 
-			-- Finde den nächsten Spieler in der Arena
+			-- Finde den nächsten lebenden Spieler in der Arena anhand 2D-Horizontaldistanz
 			local closestPlayer: Player? = nil
-			local closestDist = math.huge
+			local closestFlatDist = math.huge
+			local closestTargetRoot: BasePart? = nil
 
 			for _, player in Players:GetPlayers() do
 				local char = player.Character
@@ -633,34 +717,77 @@ local function startBossAILoop()
 					local hum = char:FindFirstChild("Humanoid") :: Humanoid?
 					local root = char:FindFirstChild("HumanoidRootPart") :: BasePart?
 					if hum and root and hum.Health > 0 then
-						local distFromCenter = (root.Position - ARENA_CENTER).Magnitude
-						if distFromCenter <= ARENA_RADIUS then
-							local distToBoss = (root.Position - bossRoot.Position).Magnitude
-							if distToBoss < closestDist then
-								closestDist = distToBoss
+						local flatDistFromCenter = (Vector2.new(root.Position.X, root.Position.Z) - Vector2.new(ARENA_CENTER.X, ARENA_CENTER.Z)).Magnitude
+						if flatDistFromCenter <= (ARENA_RADIUS + 25) then
+							local flatDistToBoss = (Vector2.new(root.Position.X, root.Position.Z) - Vector2.new(bossRoot.Position.X, bossRoot.Position.Z)).Magnitude
+							if flatDistToBoss < closestFlatDist then
+								closestFlatDist = flatDistToBoss
 								closestPlayer = player
+								closestTargetRoot = root
 							end
 						end
 					end
 				end
 			end
 
-			if closestPlayer and closestPlayer.Character then
-				local targetRoot = closestPlayer.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
-				if targetRoot then
-					if closestDist <= 15 then
-						-- Nah genug für den telegrafierten Bodenschlag!
-						currentBossHumanoid:MoveTo(bossRoot.Position)
-						executeTelegraphedAttack(targetRoot.Position)
-					else
-						-- Dem Spieler nähern
-						currentBossHumanoid:MoveTo(targetRoot.Position)
+			if closestPlayer and closestTargetRoot then
+				local now = os.clock()
+				local attackCooldown = BossConfig.ForestGolemCore.AttackCooldown
+				local canAttack = (now - lastBossAttackTime) >= attackCooldown
+
+				local toPlayer = Vector3.new(closestTargetRoot.Position.X - bossRoot.Position.X, 0, closestTargetRoot.Position.Z - bossRoot.Position.Z)
+				local flatDist = toPlayer.Magnitude
+
+				if closestFlatDist <= 16 and canAttack then
+					-- Nah genug für den telegrafierten Bodenschlag!
+					lastBossAttackTime = now
+					if currentBossMover then
+						currentBossMover.Velocity = Vector3.zero
+					end
+					if currentBossRotator and flatDist > 0.1 then
+						currentBossRotator.CFrame = CFrame.lookAt(bossRoot.Position, bossRoot.Position + toPlayer)
+					end
+					executeTelegraphedAttack(closestTargetRoot.Position)
+				else
+					-- Dem Spieler aktiv nähern
+					if not isBossAttacking then
+						local speed = 11
+						if flatDist > 5.5 then
+							local moveDir = toPlayer.Unit
+							if currentBossMover then
+								currentBossMover.Velocity = moveDir * speed
+							end
+							if currentBossRotator then
+								currentBossRotator.CFrame = CFrame.lookAt(bossRoot.Position, bossRoot.Position + moveDir)
+							end
+						else
+							-- Direkt vor dem Spieler stehen bleiben und ihn fixieren
+							if currentBossMover then
+								currentBossMover.Velocity = Vector3.zero
+							end
+							if currentBossRotator and flatDist > 0.1 then
+								currentBossRotator.CFrame = CFrame.lookAt(bossRoot.Position, bossRoot.Position + toPlayer)
+							end
+						end
 					end
 				end
 			else
-				-- Keine Spieler in der Arena -> Zurück zum Zentrum
-				if (bossRoot.Position - ARENA_CENTER).Magnitude > 8 then
-					currentBossHumanoid:MoveTo(ARENA_CENTER)
+				-- Keine Spieler in Reichweite -> Zurück zum Zentrum der Arena
+				local toCenter = Vector3.new(ARENA_CENTER.X - bossRoot.Position.X, 0, ARENA_CENTER.Z - bossRoot.Position.Z)
+				local distToCenter = toCenter.Magnitude
+
+				if distToCenter > 4 and not isBossAttacking then
+					local moveDir = toCenter.Unit
+					if currentBossMover then
+						currentBossMover.Velocity = moveDir * 8
+					end
+					if currentBossRotator then
+						currentBossRotator.CFrame = CFrame.lookAt(bossRoot.Position, bossRoot.Position + moveDir)
+					end
+				else
+					if currentBossMover then
+						currentBossMover.Velocity = Vector3.zero
+					end
 				end
 			end
 		end
@@ -681,10 +808,10 @@ local function setupAttackHandler()
 			return
 		end
 
-		-- Cooldown-Prüfung (0.35 Sekunden zwischen Schlägen)
+		-- Cooldown-Prüfung (0.22s Server vs 0.35s Client fängt Latenzschwankungen ab)
 		local now = os.clock()
 		local lastAttack = playerAttackCooldowns[player] or 0
-		if now - lastAttack < 0.35 then
+		if now - lastAttack < 0.22 then
 			return
 		end
 		playerAttackCooldowns[player] = now
@@ -697,16 +824,26 @@ local function setupAttackHandler()
 		local itemConfig = ItemConfig[weaponId]
 		local weaponDamage = if itemConfig and itemConfig.Damage then itemConfig.Damage else 25
 
-		-- 1. Prüfe auf Boss in Reichweite (Arena)
+		-- 1. Prüfe auf Boss in Reichweite (Arena, großzügiger Trefferradius von 30 Studs)
 		local hitBoss = false
 		if isBossAlive and currentBossModel and currentBossHumanoid and currentBossHumanoid.Health > 0 then
 			local bossRoot = currentBossModel.PrimaryPart
 			if bossRoot then
-				local dist = (root.Position - bossRoot.Position).Magnitude
-				if dist <= 18 then
+				local flatDist = (Vector2.new(root.Position.X, root.Position.Z) - Vector2.new(bossRoot.Position.X, bossRoot.Position.Z)).Magnitude
+				local dy = math.abs(root.Position.Y - bossRoot.Position.Y)
+				if flatDist <= 30 and dy <= 28 then
 					hitBoss = true
-					currentBossHumanoid.Health = math.max(0, currentBossHumanoid.Health - weaponDamage)
+					currentBossHumanoid:TakeDamage(weaponDamage)
 					showDamageNumber(bossRoot.Position, weaponDamage)
+
+					-- Audio-Feedback beim Treffen des Bosses
+					local hitSound = Instance.new("Sound")
+					hitSound.SoundId = "rbxassetid://566593606"
+					hitSound.Volume = 0.8
+					hitSound.Parent = bossRoot
+					hitSound:Play()
+					Debris:AddItem(hitSound, 1.2)
+
 					updateBossHealthUI(currentBossHumanoid.Health, currentBossHumanoid.MaxHealth)
 
 					if currentBossHumanoid.Health <= 0 then
@@ -841,7 +978,8 @@ local function ensureArenaShrine()
 	-- Schwebender Schrein-Kristall (Amethyst, wie im Video)
 	local crystal = createPart(shrine, "ShrinecrystalBase", Vector3.new(2, 3.5, 2), shrinePos + Vector3.new(0, 4.2, 0), Color3.fromRGB(155, 60, 255), Enum.Material.Neon, false)
 	local crystalMesh = Instance.new("SpecialMesh")
-	crystalMesh.MeshType = Enum.MeshType.Diamond
+	crystalMesh.MeshType = Enum.MeshType.Sphere
+	crystalMesh.Scale = Vector3.new(1.0, 1.8, 1.0)
 	crystalMesh.Parent = crystal
 	-- Animiertes Schweben + Rotieren
 	task.spawn(function()
@@ -879,7 +1017,7 @@ function BossService.Init()
 
 	local arena = ensureArenaExists()
 	createArenaForestDecor(arena)
-	ensureArenaShrine()
+	pcall(ensureArenaShrine)
 	setupAttackHandler()
 	startBossAILoop()
 

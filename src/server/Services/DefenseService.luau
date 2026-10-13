@@ -258,7 +258,12 @@ function DefenseService.CreateGuardMinion(plotModel: Model, spawnOffset: Vector3
 	humanoid.MaxHealth = 120
 	humanoid.Health = 120
 	humanoid.WalkSpeed = 13
+	humanoid.HipHeight = 1.3
+	humanoid.RequiresNeck = false
+	humanoid.BreakJointsOnDeath = false
 	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
 	humanoid.Parent = minionModel
 
 	-- RootPart (Fels-Unterkörper)

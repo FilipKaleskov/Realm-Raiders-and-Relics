@@ -9,17 +9,31 @@
 
 Füge diese Befehle unten in die **Befehlszeile (Command Bar)** in Roblox Studio ein und drücke **Enter**, um die Welt direkt im **gestoppten Zustand (Edit-Modus)** aufzubauen:
 
-### 🌌 Komplette Video-Welt generieren (Hängebrücke + Säure-Abgrund + Nacht-Lighting + Plots + Tempel-Portale + Boss-Arena):
+### 🌌 Komplette Video-Welt generieren (Hängebrücke + Säure + Nacht-Lighting + Plots + Portale + **Golem Facelift** + **Waldbäume** + **Amethyst-Schrein** + **Brücken-Sky-Beacons**):
 ```lua
 pcall(function() workspace.Baseplate:Destroy() end); pcall(function() workspace.Environment:Destroy() end); pcall(function() workspace.Plots:Destroy() end); require(game.ServerScriptService.Server.Services.EnvironmentService).Init(); require(game.ServerScriptService.Server.Services.PlotService).Init(); require(game.ServerScriptService.Server.Services.PortalService).Init(); require(game.ServerScriptService.Server.Services.BossService).Init()
 ```
 
-### 🌉 Nur Video-Umgebung aufbauen (Nacht-Lighting, Säuresee, Hängebrücke, Fackeln):
+### 🌉 Nur Video-Umgebung aufbauen (Nacht-Lighting, Säuresee, Hängebrücke, **rote Sky-Beacons**, Fackeln):
 ```lua
 pcall(function() workspace.Baseplate:Destroy() end); require(game.ServerScriptService.Server.Services.EnvironmentService).Init()
 ```
 
+### 👹 Nur Boss-Arena aufbauen (Golem mit **gelben Augen**, **Moos-Schultern**, **Felszähnen** + **Waldbäume** + **Amethyst-Schrein**):
+```lua
+require(game.ServerScriptService.Server.Services.BossService).Init()
+```
+
 > **Tipp:** Drücke nach dem Ausführen einfach **Strg + S**, um die generierten 3D-Objekte dauerhaft in deiner Roblox-Studio-Welt zu speichern.
+
+### 🎮 Neue Client-Features im Spiel (kein Studio-Befehl nötig):
+| Taste | Aktion |
+| :--- | :--- |
+| **Linksklick / F** | Schwertschwung mit goldenem Slash-Trail |
+| **Q** | Combat-Dash mit **blauem Cyan-Flammen-Trail** |
+| **Shift** | Sprinten (erzeugt **weiße Footstep-Staubpartikel**) |
+| *Automatisch* | **🚨 BASE INTRUDED!** rotes Comic-Banner beim Opfer |
+| *Automatisch* | **+Gold Celebration-Popup** beim Boss-Kill |
 
 ---
 

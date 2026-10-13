@@ -38,6 +38,7 @@ local BossUpdatedEvent = getOrCreateRemoteEvent(EventsFolder, "BossUpdated")
 local BossTelegraphEvent = getOrCreateRemoteEvent(EventsFolder, "BossTelegraphStarted")
 local NotificationEvent = getOrCreateRemoteEvent(EventsFolder, "ShowNotification")
 local GoldUpdatedEvent = getOrCreateRemoteEvent(EventsFolder, "GoldUpdated")
+local BossDefeatedEvent = getOrCreateRemoteEvent(EventsFolder, "BossDefeated")
 
 local BossService = {}
 
@@ -214,7 +215,7 @@ local function updateBossHealthUI(health: number, maxHealth: number)
 	BossUpdatedEvent:FireAllClients("Wald-Golem", health, maxHealth, isBossAlive)
 end
 
--- Erstellt das Golem-Modell und den Overhead-Health-Balken
+-- Erstellt das Golem-Modell und den Overhead-Health-Balken (Pitch-Video-Fidelity)
 local function spawnGolemModel(): Model
 	local model = Instance.new("Model")
 	model.Name = "ForestGolem"
@@ -227,24 +228,91 @@ local function spawnGolemModel(): Model
 	root.Transparency = 1
 	model.PrimaryPart = root
 
-	-- Torso (Massiver Felsen)
-	local torso = createPart(model, "Torso", Vector3.new(8, 10, 6), spawnPos + Vector3.new(0, 6, 0), Color3.fromRGB(80, 85, 75), Enum.Material.Slate, true)
+	-- Torso (Massiver Felsen mit Steinadern)
+	local torso = createPart(model, "Torso", Vector3.new(9, 11, 7), spawnPos + Vector3.new(0, 6, 0), Color3.fromRGB(75, 80, 70), Enum.Material.Slate, true)
+	-- Steinadern auf der Brust (dunklere Linien)
+	local veinH = createPart(model, "VeinH", Vector3.new(7, 0.35, 0.35), spawnPos + Vector3.new(0, 7.8, -3.6), Color3.fromRGB(38, 42, 36), Enum.Material.SmoothPlastic, false)
+	local veinV = createPart(model, "VeinV", Vector3.new(0.35, 5, 0.35), spawnPos + Vector3.new(0, 6, -3.6), Color3.fromRGB(38, 42, 36), Enum.Material.SmoothPlastic, false)
 
-	-- Leuchtender Kern auf der Brust (Schwachstelle & Erkennungsmerkmal)
-	local corePart = createPart(model, "Core", Vector3.new(3, 3, 2), spawnPos + Vector3.new(0, 7, -3.1), Color3.fromRGB(46, 204, 113), Enum.Material.Neon, false)
+	-- Leuchtender SMARAGD-Kern auf der Brust (Schwachstelle, pulsierendes Grün)
+	local corePart = createPart(model, "Core", Vector3.new(2.8, 2.8, 1.8), spawnPos + Vector3.new(0, 7, -3.6), Color3.fromRGB(46, 204, 113), Enum.Material.Neon, false)
+	local coreAtt = Instance.new("Attachment")
+	coreAtt.Parent = corePart
+	local corePulse = Instance.new("ParticleEmitter")
+	corePulse.Rate = 12
+	corePulse.Lifetime = NumberRange.new(1.2, 2.0)
+	corePulse.Speed = NumberRange.new(1.5, 3.0)
+	corePulse.SpreadAngle = Vector2.new(180, 180)
+	corePulse.Size = NumberSequence.new{ NumberSequenceKeypoint.new(0, 0.4), NumberSequenceKeypoint.new(1, 0) }
+	corePulse.Color = ColorSequence.new(Color3.fromRGB(46, 230, 130))
+	corePulse.LightEmission = 1.0
+	corePulse.Parent = coreAtt
 
-	-- Kopf mit leuchtenden Augen
-	local head = createPart(model, "Head", Vector3.new(4.5, 4, 4.5), spawnPos + Vector3.new(0, 12, 0), Color3.fromRGB(90, 95, 85), Enum.Material.Slate, true)
-	local eyeL = createPart(model, "EyeL", Vector3.new(0.8, 0.8, 0.8), spawnPos + Vector3.new(-1.2, 12.5, -2.3), Color3.fromRGB(46, 204, 113), Enum.Material.Neon, false)
-	local eyeR = createPart(model, "EyeR", Vector3.new(0.8, 0.8, 0.8), spawnPos + Vector3.new(1.2, 12.5, -2.3), Color3.fromRGB(46, 204, 113), Enum.Material.Neon, false)
+	-- Kopf (massiver Felsblock mit markanten Wangenknochen)
+	local head = createPart(model, "Head", Vector3.new(5.5, 4.5, 5), spawnPos + Vector3.new(0, 13, 0), Color3.fromRGB(85, 90, 80), Enum.Material.Slate, true)
+	-- Wangenknochen (Felsbrocken an den Seiten des Kopfes)
+	local cheekL = createPart(model, "CheekL", Vector3.new(1.8, 1.4, 1.4), spawnPos + Vector3.new(-2.6, 12.6, -1.5), Color3.fromRGB(65, 70, 62), Enum.Material.Cobblestone, true)
+	local cheekR = createPart(model, "CheekR", Vector3.new(1.8, 1.4, 1.4), spawnPos + Vector3.new(2.6, 12.6, -1.5), Color3.fromRGB(65, 70, 62), Enum.Material.Cobblestone, true)
 
-	-- Riesige Felsen-Arme
-	local armL = createPart(model, "ArmL", Vector3.new(3.5, 9, 3.5), spawnPos + Vector3.new(-6, 6, 0), Color3.fromRGB(75, 80, 70), Enum.Material.Cobblestone, true)
-	local armR = createPart(model, "ArmR", Vector3.new(3.5, 9, 3.5), spawnPos + Vector3.new(6, 6, 0), Color3.fromRGB(75, 80, 70), Enum.Material.Cobblestone, true)
+	-- LEUCHTEND GELBE AUGEN (wie im Pitch-Video!)
+	local eyeL = createPart(model, "EyeL", Vector3.new(1.1, 0.9, 0.7), spawnPos + Vector3.new(-1.5, 13.4, -2.6), Color3.fromRGB(255, 235, 40), Enum.Material.Neon, false)
+	local eyeR = createPart(model, "EyeR", Vector3.new(1.1, 0.9, 0.7), spawnPos + Vector3.new(1.5, 13.4, -2.6), Color3.fromRGB(255, 235, 40), Enum.Material.Neon, false)
+	-- Gelbe Augenlicht-Emitter
+	local eyeLLight = Instance.new("PointLight")
+	eyeLLight.Color = Color3.fromRGB(255, 220, 0)
+	eyeLLight.Range = 20
+	eyeLLight.Brightness = 2.5
+	eyeLLight.Parent = eyeL
+	local eyeRLight = Instance.new("PointLight")
+	eyeRLight.Color = Color3.fromRGB(255, 220, 0)
+	eyeRLight.Range = 20
+	eyeRLight.Brightness = 2.5
+	eyeRLight.Parent = eyeR
 
-	-- Beine
-	local legL = createPart(model, "LegL", Vector3.new(3.5, 6, 3.5), spawnPos + Vector3.new(-2.5, 2, 0), Color3.fromRGB(70, 75, 65), Enum.Material.Cobblestone, true)
-	local legR = createPart(model, "LegR", Vector3.new(3.5, 6, 3.5), spawnPos + Vector3.new(2.5, 2, 0), Color3.fromRGB(70, 75, 65), Enum.Material.Cobblestone, true)
+	-- FELSEN-ZÄHNE / STOSSZÄHNE am Maul
+	local teethPositions = {
+		Vector3.new(-1.8, 11.0, -2.7),
+		Vector3.new(-0.6, 10.7, -2.75),
+		Vector3.new(0.6, 10.7, -2.75),
+		Vector3.new(1.8, 11.0, -2.7),
+	}
+	for i, tPos in ipairs(teethPositions) do
+		local tooth = createPart(model, "Tooth_" .. i, Vector3.new(0.7, 1.2, 0.5), spawnPos + tPos, Color3.fromRGB(220, 215, 195), Enum.Material.SmoothPlastic, true)
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.Wedge
+		mesh.Parent = tooth
+	end
+
+	-- Massive FELSBLOCK-FÄUSTE an den Armen
+	-- Linker Arm + Faust
+	local armL = createPart(model, "ArmL", Vector3.new(4, 10, 4), spawnPos + Vector3.new(-7, 6.5, 0), Color3.fromRGB(72, 78, 68), Enum.Material.Cobblestone, true)
+	local fistL = createPart(model, "FistL", Vector3.new(5, 5, 5), spawnPos + Vector3.new(-7.5, 0.5, 0), Color3.fromRGB(65, 70, 62), Enum.Material.Slate, true)
+	-- Knöchelrisse auf der Faust
+	local knuckleL = createPart(model, "KnuckleL", Vector3.new(4.5, 0.4, 0.4), spawnPos + Vector3.new(-7.5, 3.0, -2.55), Color3.fromRGB(42, 46, 40), Enum.Material.SmoothPlastic, false)
+	-- Rechter Arm + Faust
+	local armR = createPart(model, "ArmR", Vector3.new(4, 10, 4), spawnPos + Vector3.new(7, 6.5, 0), Color3.fromRGB(72, 78, 68), Enum.Material.Cobblestone, true)
+	local fistR = createPart(model, "FistR", Vector3.new(5, 5, 5), spawnPos + Vector3.new(7.5, 0.5, 0), Color3.fromRGB(65, 70, 62), Enum.Material.Slate, true)
+	local knuckleR = createPart(model, "KnuckleR", Vector3.new(4.5, 0.4, 0.4), spawnPos + Vector3.new(7.5, 3.0, -2.55), Color3.fromRGB(42, 46, 40), Enum.Material.SmoothPlastic, false)
+
+	-- MOOS-SCHULTERPOLSTER (Grass-Material in sattem Waldgrün, wie im Video!)
+	local mossOffsets = {
+		Vector3.new(-5.5, 11.0, 0),   -- linke Schulter
+		Vector3.new(5.5, 11.0, 0),    -- rechte Schulter
+		Vector3.new(-4.5, 11.6, 1.5), -- links hinten
+		Vector3.new(4.5, 11.6, 1.5),  -- rechts hinten
+		Vector3.new(0, 12.2, 2.5),    -- Nacken-Moos
+	}
+	for i, mOff in ipairs(mossOffsets) do
+		local moss = createPart(model, "Moss_" .. i, Vector3.new(2.8, 1.2, 2.8), spawnPos + mOff, Color3.fromRGB(55, 120, 45), Enum.Material.Grass, false)
+		moss.CastShadow = false
+	end
+	-- Moos-Klumpen auf dem Kopf
+	local mossHead = createPart(model, "MossHead", Vector3.new(4.5, 1.0, 4.5), spawnPos + Vector3.new(0, 15.8, 0), Color3.fromRGB(50, 110, 38), Enum.Material.Grass, false)
+	mossHead.CastShadow = false
+
+	-- Beine (massiver, gedrungener Block-Stil)
+	local legL = createPart(model, "LegL", Vector3.new(4, 7, 4), spawnPos + Vector3.new(-2.8, 1.5, 0), Color3.fromRGB(68, 72, 62), Enum.Material.Cobblestone, true)
+	local legR = createPart(model, "LegR", Vector3.new(4, 7, 4), spawnPos + Vector3.new(2.8, 1.5, 0), Color3.fromRGB(68, 72, 62), Enum.Material.Cobblestone, true)
 
 	-- Schweißungen (Welds)
 	for _, part in model:GetChildren() do
@@ -415,8 +483,8 @@ local function handleBossDefeated(killer: Player?)
 	end
 
 	-- Belohnung für den Bezwinger
+	local goldReward = BossConfig.ForestGolemCore.GoldReward
 	if killer then
-		local goldReward = BossConfig.ForestGolemCore.GoldReward
 		DataManager.AddGold(killer, goldReward)
 		DataManager.AddCore(killer, "ForestGolemCore")
 
@@ -424,6 +492,9 @@ local function handleBossDefeated(killer: Player?)
 		if killerData then
 			GoldUpdatedEvent:FireClient(killer, killerData.Gold)
 		end
+
+		-- 🎉 Celebration-Event für das +Gold-Popup auf dem Client (wie im Pitch-Video)
+		BossDefeatedEvent:FireClient(killer, "ForestGolemCore", goldReward)
 
 		NotificationEvent:FireClient(
 			killer,
@@ -683,13 +754,109 @@ local function setupAttackHandler()
 	end)
 end
 
+-- Erstellt Ruinen-Nadelbäume rund um die Arena (wie im Pitch-Video)
+local function createArenaForestDecor(arena: Folder)
+	local treePositions = {
+		{ pos = ARENA_CENTER + Vector3.new(ARENA_RADIUS + 12, 0, 0), scale = 1.4 },
+		{ pos = ARENA_CENTER + Vector3.new(-(ARENA_RADIUS + 12), 0, 0), scale = 1.6 },
+		{ pos = ARENA_CENTER + Vector3.new(0, 0, ARENA_RADIUS + 12), scale = 1.2 },
+		{ pos = ARENA_CENTER + Vector3.new(0, 0, -(ARENA_RADIUS + 14)), scale = 1.5 },
+		{ pos = ARENA_CENTER + Vector3.new(ARENA_RADIUS + 10, 0, ARENA_RADIUS + 10), scale = 1.3 },
+		{ pos = ARENA_CENTER + Vector3.new(-(ARENA_RADIUS + 10), 0, -(ARENA_RADIUS + 10)), scale = 1.1 },
+		{ pos = ARENA_CENTER + Vector3.new(ARENA_RADIUS + 14, 0, -(ARENA_RADIUS + 8)), scale = 1.7 },
+		{ pos = ARENA_CENTER + Vector3.new(-(ARENA_RADIUS + 14), 0, ARENA_RADIUS + 8), scale = 1.2 },
+	}
+	local treeFolder = Instance.new("Folder")
+	treeFolder.Name = "ArenaForest"
+	treeFolder.Parent = arena
+	for i, treeData in ipairs(treePositions) do
+		local s = treeData.scale
+		local base = treeData.pos
+		-- Stamm
+		local trunk = createPart(treeFolder, "Trunk_" .. i, Vector3.new(2.2 * s, 14 * s, 2.2 * s), base + Vector3.new(0, 7 * s, 0), Color3.fromRGB(55, 40, 28), Enum.Material.WoodPlanks, true)
+		-- Untere Astebene
+		local cone1 = createPart(treeFolder, "Cone1_" .. i, Vector3.new(9 * s, 5 * s, 9 * s), base + Vector3.new(0, 13 * s, 0), Color3.fromRGB(32, 68, 30), Enum.Material.Grass, false)
+		local mesh1 = Instance.new("SpecialMesh")
+		mesh1.MeshType = Enum.MeshType.FileMesh
+		mesh1.MeshId = "rbxassetid://1058430"
+		mesh1.Parent = cone1
+		-- Mittlere Astebene
+		local cone2 = createPart(treeFolder, "Cone2_" .. i, Vector3.new(7 * s, 5.5 * s, 7 * s), base + Vector3.new(0, 17 * s, 0), Color3.fromRGB(28, 58, 26), Enum.Material.Grass, false)
+		local mesh2 = Instance.new("SpecialMesh")
+		mesh2.MeshType = Enum.MeshType.FileMesh
+		mesh2.MeshId = "rbxassetid://1058430"
+		mesh2.Parent = cone2
+		-- Spitze
+		local cone3 = createPart(treeFolder, "Cone3_" .. i, Vector3.new(4.5 * s, 5 * s, 4.5 * s), base + Vector3.new(0, 21 * s, 0), Color3.fromRGB(26, 52, 24), Enum.Material.Grass, false)
+		local mesh3 = Instance.new("SpecialMesh")
+		mesh3.MeshType = Enum.MeshType.FileMesh
+		mesh3.MeshId = "rbxassetid://1058430"
+		mesh3.Parent = cone3
+	end
+end
+
+-- Erstellt einen antiken Relikt-Schrein in der Arena-Mitte (wo der Kern nach dem Boss-Kill erscheint)
+local function ensureArenaShrine()
+	local arena = Workspace:FindFirstChild("Arena_WaldRuinen")
+	if not arena then return end
+	local existing = arena:FindFirstChild("ArenaShrine")
+	if existing then existing:Destroy() end
+
+	local shrine = Instance.new("Model")
+	shrine.Name = "ArenaShrine"
+	shrine.Parent = arena
+	local shrinePos = ARENA_CENTER + Vector3.new(0, 1, -20)
+
+	-- Stufensockel (3 Ebenen Marmor)
+	for step = 1, 3 do
+		local size = 6.5 - (step - 1) * 1.2
+		local yOff = (step - 1) * 0.9
+		local slab = createPart(shrine, "Slab_" .. step, Vector3.new(size, 0.8, size), shrinePos + Vector3.new(0, yOff, 0), Color3.fromRGB(220, 218, 210), Enum.Material.Marble, true)
+		if step == 1 then shrine.PrimaryPart = slab end
+	end
+
+	-- Schwebender Schrein-Kristall (Amethyst, wie im Video)
+	local crystal = createPart(shrine, "ShrinecrystalBase", Vector3.new(2, 3.5, 2), shrinePos + Vector3.new(0, 4.2, 0), Color3.fromRGB(155, 60, 255), Enum.Material.Neon, false)
+	local crystalMesh = Instance.new("SpecialMesh")
+	crystalMesh.MeshType = Enum.MeshType.Diamond
+	crystalMesh.Parent = crystal
+	-- Animiertes Schweben + Rotieren
+	task.spawn(function()
+		local t = 0
+		while crystal:IsDescendantOf(Workspace) do
+			t += task.wait(0.04)
+			crystal.CFrame = CFrame.new(shrinePos + Vector3.new(0, 4.2 + math.sin(t * 1.5) * 0.6, 0)) * CFrame.Angles(0, t * 0.8, 0)
+		end
+	end)
+	local crystalLight = Instance.new("PointLight")
+	crystalLight.Color = Color3.fromRGB(180, 60, 255)
+	crystalLight.Range = 28
+	crystalLight.Brightness = 3.5
+	crystalLight.Parent = crystal
+
+	-- 4 flankierende Amethyst-Säulen
+	for i = 1, 4 do
+		local angle = (i / 4) * math.pi * 2
+		local pPos = shrinePos + Vector3.new(math.cos(angle) * 4.5, 0, math.sin(angle) * 4.5)
+		local pillar = createPart(shrine, "ShrPillar_" .. i, Vector3.new(1.0, 5.5, 1.0), pPos + Vector3.new(0, 2.5, 0), Color3.fromRGB(48, 42, 58), Enum.Material.Slate, true)
+		local cap = createPart(shrine, "ShrCap_" .. i, Vector3.new(1.5, 0.5, 1.5), pPos + Vector3.new(0, 5.5, 0), Color3.fromRGB(155, 60, 255), Enum.Material.Neon, false)
+		local capLight = Instance.new("PointLight")
+		capLight.Color = Color3.fromRGB(155, 60, 255)
+		capLight.Range = 10
+		capLight.Brightness = 1.8
+		capLight.Parent = cap
+	end
+end
+
 function BossService.Init()
 	if isInitialized then
 		return
 	end
 	isInitialized = true
 
-	ensureArenaExists()
+	local arena = ensureArenaExists()
+	createArenaForestDecor(arena)
+	ensureArenaShrine()
 	setupAttackHandler()
 	startBossAILoop()
 
@@ -698,7 +865,7 @@ function BossService.Init()
 		playerAttackCooldowns[player] = nil
 	end)
 
-	print("[BossService] Wald-Golem initialisiert (Spawnt dynamisch bei Portal-Eintritt).")
+	print("[BossService] Wald-Golem initialisiert (Gelbe Augen, Moos, Zähne, Schrein, Waldbäume aktiv).")
 end
 
 return BossService

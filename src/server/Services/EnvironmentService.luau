@@ -304,6 +304,51 @@ local function createSuspensionBridge(envFolder: Folder): Model
 	buildStoneArch(bridgeStart, true)
 	buildStoneArch(bridgeEnd, false)
 
+	-- 1b. SKY-BEACONS: Rote Laser-Lichtsäulen an den Pylonen-Kronen (wie im Pitch-Video!)
+	-- Je zwei schmale, weithin sichtbare rote Strahlensäulen je Pylonturm
+	local beaconData = {
+		{ x = bridgeStart.X, z = -bridgeWidth/2 - 1.5 },
+		{ x = bridgeStart.X, z = bridgeWidth/2 + 1.5 },
+		{ x = bridgeEnd.X, z = -bridgeWidth/2 - 1.5 },
+		{ x = bridgeEnd.X, z = bridgeWidth/2 + 1.5 },
+	}
+	for i, bd in ipairs(beaconData) do
+		-- Beacon-Basis auf dem Pylonen-Kopf
+		local beaconBase = Instance.new("Part")
+		beaconBase.Name = "SkyBeaconBase_" .. i
+		beaconBase.Size = Vector3.new(1.4, 2.5, 1.4)
+		beaconBase.Position = Vector3.new(bd.x, 27.5, bd.z)
+		beaconBase.Color = Color3.fromRGB(180, 30, 30)
+		beaconBase.Material = Enum.Material.Neon
+		beaconBase.Anchored = true
+		beaconBase.CanCollide = false
+		beaconBase.CastShadow = false
+		beaconBase.Parent = bridge
+		-- Rotes Basislicht
+		local baseLight = Instance.new("PointLight")
+		baseLight.Color = Color3.fromRGB(255, 30, 30)
+		baseLight.Range = 30
+		baseLight.Brightness = 3.5
+		baseLight.Parent = beaconBase
+
+		-- Vertikale Laser-Säule: langer schmaler Zylinder in den Nachthimmel
+		local beamHeight = 350
+		local beaconBeam = Instance.new("Part")
+		beaconBeam.Name = "SkyBeaconLaser_" .. i
+		beaconBeam.Shape = Enum.PartType.Cylinder
+		beaconBeam.Size = Vector3.new(beamHeight, 2.2, 2.2)
+		beaconBeam.CFrame = CFrame.new(
+			Vector3.new(bd.x, 28 + beamHeight / 2, bd.z)
+		) * CFrame.Angles(0, 0, math.rad(90))
+		beaconBeam.Color = Color3.fromRGB(255, 20, 20)
+		beaconBeam.Material = Enum.Material.Neon
+		beaconBeam.Transparency = 0.35
+		beaconBeam.Anchored = true
+		beaconBeam.CanCollide = false
+		beaconBeam.CastShadow = false
+		beaconBeam.Parent = bridge
+	end
+
 	-- 2. Brückendeck: Holzbohlen / Planken mit Fugen (Säure leuchtet hindurch)
 	local plankLength = 2.2
 	local plankCount = math.floor(spanLength / (plankLength + 0.4))

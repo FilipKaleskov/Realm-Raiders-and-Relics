@@ -21,6 +21,20 @@ local DataManager = require(DataManagerModule)
 local NotificationEvent = EventsFolder:WaitForChild("ShowNotification") :: RemoteEvent
 local GoldUpdatedEvent = EventsFolder:WaitForChild("GoldUpdated") :: RemoteEvent
 
+-- BaseIntruded-Event: Zeigt das ikonische rote Banner beim Opfer
+local function getOrCreateRemoteEvent(parent: Instance, name: string): RemoteEvent
+	local existing = parent:FindFirstChild(name)
+	if existing and existing:IsA("RemoteEvent") then
+		return existing
+	end
+	local newRemote = Instance.new("RemoteEvent")
+	newRemote.Name = name
+	newRemote.Parent = parent
+	return newRemote
+end
+
+local BaseIntrudedEvent = getOrCreateRemoteEvent(EventsFolder, "BaseIntruded")
+
 local RaidService = {}
 local isInitialized = false
 
@@ -252,6 +266,61 @@ function RaidService.StartTheft(thief: Player, victim: any, slotIndex: number, c
 			end
 		end
 		NotificationEvent:FireClient(victim, string.format("🚨 ALARM: %s stiehlt deinen %s (Stufe %d)!", thief.DisplayName, coreName, coreLevel), true)
+	end
+
+	-- Schockwellen-Burst-VFX am Sockel (weißer Partikel-Explosionsring wie im Pitch-Video)
+	if isRealPlayer then
+		-- Opfer-Plot-Position ermöglichen (Partikel-Burst am Sockel)
+		task.spawn(function()
+			if PlotService then
+				local victimPlot = PlotService.GetPlayerPlot(victim)
+				if victimPlot then
+					local pedestals = victimPlot:FindFirstChild("Pedestals")
+					local pedestal = pedestals and pedestals:FindFirstChild("Sockel_" .. slotIndex)
+					local rootPart = pedestal and (pedestal:FindFirstChild("Root") or pedestal:FindFirstChildWhichIsA("BasePart")) :: BasePart?
+					if rootPart then
+						-- Schockwelle (expandierender weißer Ring)
+						local shock = Instance.new("Part")
+						shock.Name = "TheftShockwave"
+						shock.Shape = Enum.PartType.Cylinder
+						shock.Size = Vector3.new(0.4, 3, 3)
+						shock.CFrame = CFrame.new(rootPart.Position + Vector3.new(0, 1.5, 0)) * CFrame.Angles(0, 0, math.rad(90))
+						shock.Material = Enum.Material.Neon
+						shock.Color = Color3.fromRGB(255, 255, 255)
+						shock.Transparency = 0.3
+						shock.CanCollide = false
+						shock.Anchored = true
+						shock.CastShadow = false
+						shock.Parent = Workspace
+
+						local shockLight = Instance.new("PointLight")
+						shockLight.Color = Color3.fromRGB(255, 200, 100)
+						shockLight.Range = 30
+						shockLight.Brightness = 4.0
+						shockLight.Parent = shock
+
+						local shockTween = game:GetService("TweenService"):Create(
+							shock,
+							TweenInfo.new(0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+							{ Size = Vector3.new(0.4, 18, 18), Transparency = 1 }
+						)
+						local lightTween = game:GetService("TweenService"):Create(
+							shockLight,
+							TweenInfo.new(0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+							{ Brightness = 0 }
+						)
+						shockTween:Play()
+						lightTween:Play()
+						game:GetService("Debris"):AddItem(shock, 0.6)
+					end
+				end
+			end
+		end)
+	end
+
+	-- BaseIntruded-Event ans Opfer senden (aktiviert das rote Comic-Banner auf dessen Client)
+	if isRealPlayer and typeof(victim) == "Instance" and victim:IsA("Player") then
+		BaseIntrudedEvent:FireClient(victim)
 	end
 
 	-- 2. Attribute auf dem Dieb setzen (inklusive Stufe!)

@@ -23,6 +23,8 @@ local function ensureRemoteEvents(): Folder
 		"ShowNotification",
 		"DimensionChanged",
 		"BossUpdated",
+		"BossDefeated",
+		"BaseIntruded",
 		"InventoryUpdated",
 		"RequestInventory",
 		"AttackIntent",

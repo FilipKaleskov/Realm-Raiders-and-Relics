@@ -818,7 +818,9 @@ local function setupAttackHandler()
 
 		-- Schaden ermitteln (basierend auf der Waffe des Spielers im Inventar)
 		local playerData = DataManager.Get(player)
-		local weaponId = if playerData and playerData.Inventory and playerData.Inventory.Weapons and playerData.Inventory.Weapons[1]
+		local weaponId = if playerData and playerData.Inventory and playerData.Inventory.EquippedWeapon
+			then playerData.Inventory.EquippedWeapon
+			elseif playerData and playerData.Inventory and playerData.Inventory.Weapons and playerData.Inventory.Weapons[1]
 			then playerData.Inventory.Weapons[1]
 			else "RustySword"
 		local itemConfig = ItemConfig[weaponId]

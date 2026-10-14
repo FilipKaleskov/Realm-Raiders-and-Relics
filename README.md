@@ -38,7 +38,9 @@ require(game.ServerScriptService.Server.Services.BossService).Init()
 | **Q** | Combat-Dash mit **blauem Cyan-Flammen-Trail** (weicht Angriffen & Fallen aus) |
 | **Shift** | Sprinten (erzeugt weiße Footstep-Staubpartikel, bei Raubzug deaktiviert) |
 | **[E] am Schmelz-Altar** | Gestohlene Seelenkerne **einschmelzen** für massiven **Sofort-Gold-Bonus** |
+| **B / [E] an der Schmiede** | **Waffen-Schmiede & Shop** öffnen (Schwerter schmieden, Sockel & Fallen kaufen) |
 | **[E] am fremden Sockel** | Seelenkern stehlen (3.5s Raub-Interaktion, löst Alarm aus) |
+| **[E] am gesperrten Sockel** | Sockel 2 (500 Gold) oder Sockel 3 (2.000 Gold) freischalten |
 | **🛡️ Wächter-Minion** | Greift fremde Eindringlinge automatisch mit Steinaxt an (15 Schaden) |
 | **🩸 Stachelfallen** | Schnellen bei fremden Dieben hoch (25 Schaden + temporärer Slowdown) |
 | *Automatisch* | **🚨 BASE INTRUDED!** rotes Comic-Banner beim Opfer bei Raubzügen |
@@ -119,19 +121,34 @@ Realm-Raiders-and-Relics/
 
 
 
-## 🗺️ Roadmap & Meilensteine (MVP)
+## 🗺️ Roadmap & Meilensteine
 
-- [x] **Setup:** Git-Repository, Rojo-Konfiguration und typisiertes `PlayerDataTemplate`
-- [ ] **Phase 1 (MVP Core Loop):**
-  - [ ] Tycoon-Plot-System & automatische Zuweisung
-  - [ ] Sockel-Platzierung & passive Goldgenerierung (CPS)
-  - [ ] Erste Dimension (*Wald/Ruinen*) mit Forest Golem Boss
-  - [ ] Telegrafierte Angriffe (rote Bodenindikatoren) & Server-validiertes Kampfsystem
-  - [ ] Steal-&-Defend-Interaktion & Alarmsystem
-- [ ] **Phase 2 (Content & Defense):**
-  - [ ] Verteidigungsanlagen (Spikes, Laser, Minion-Wächter)
-  - [ ] Erz-Abbau & Schmiedesystem in der Basis
-  - [ ] 2 weitere Dimensionen (*Unterwelt/Feuer*, *Kristall-Leere*)
-- [ ] **Phase 3 (Endgame & Social):**
-  - [ ] PvP-Kolosseum in der Oberwelt
-  - [ ] Globale Leaderboards & Chat-Announcements
+- [x] **Setup & Architektur:** Git-Repository, Rojo-Konfiguration und typisiertes `PlayerDataTemplate`
+- [x] **MVP Core Loop (Abgeschlossen):**
+  - [x] Tycoon-Plot-System & automatische Zuweisung
+  - [x] Sockel-Platzierung & passive Goldgenerierung (CPS)
+  - [x] Erste Dimension (*Wald/Ruinen*) mit Forest Golem Boss
+  - [x] Telegrafierte Angriffe (rote Bodenindikatoren) & Server-validiertes Kampfsystem
+  - [x] Steal-&-Defend-Interaktion, Sky-Beacon & Alarmsystem
+  - [x] Schmelz-Altar für Sofort-Gold-Bonus
+  - [x] Basis-Verteidigung (Stachelfallen & Minion-Wächter mit Steinaxt)
+  - [x] Check-UI Design System HUD & Inventar-Menü
+- [x] **Phase 1: Economy & Shop-Loop (Abgeschlossen):**
+  - [x] Waffen-Schmiede & Shop (Eisenschwert, Amethyst-Klinge, Leeren-Sense)
+  - [x] Basis-Erweiterung (Sockel 2 & 3 für Gold im Shop & direkt am Sockel freischalten)
+  - [x] Verteidigungs-Shop (Weitere Stachelfallen & Minions kaufen)
+  - [x] In-World 3D-Schmiede auf der zentralen Allee (Amboss, glühendes Eisen, Glutofen)
+  - [x] Dynamische Waffen-Klingenschwünge (Farben & Cooldowns nach Waffe)
+- [ ] **Nächster Fokus: Phase 2 (Audio & Game Feel):**
+  - [ ] Sound-Effekte (Klingen, Treffer, Münzen, Sirene, Boss-Roar)
+  - [ ] Floating Damage Numbers (`-25`, `CRIT!`)
+  - [ ] Floating Coin-Pickup Popups
+- [ ] **Phase 3 (Mobile Support):**
+  - [ ] On-Screen Touch Buttons (Angriff, Dash, Sprint)
+  - [ ] Mobile-optimierte Prompts & Interaktionen
+- [ ] **Phase 4 (Content Expansion):**
+  - [ ] 2. Dimension (*Nether-Kluft / Magma-Ruinen*) mit Tier 2 Magma-Koloss
+  - [ ] Neue Materialien (*Obsidian*, *Feuer-Essenz*) & Tier 2 Seelenkern
+- [ ] **Phase 5 (Monetarisierung & Social):**
+  - [ ] Gamepasses (2x Gold, Extra Sockel, Base Shield)
+  - [ ] Globale Bestenlisten auf der Allee & Badges

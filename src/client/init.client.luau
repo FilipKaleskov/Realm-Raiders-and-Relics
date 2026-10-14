@@ -14,10 +14,14 @@ local MovementController = require(MovementControllerModule)
 local PlotSelectionControllerModule = Controllers:WaitForChild("PlotSelectionController") :: ModuleScript
 local PlotSelectionController = require(PlotSelectionControllerModule)
 
+local ShopControllerModule = Controllers:WaitForChild("ShopController") :: ModuleScript
+local ShopController = require(ShopControllerModule)
+
 -- Client-Controller starten
 HUDController.Init()
 CombatController.Init()
 MovementController.Init()
 PlotSelectionController.Init()
+ShopController.Init()
 
-print("[Client] Realm Raiders Client (HUD, Combat, Movement & PlotSelection) erfolgreich gebootet.")
+print("[Client] Realm Raiders Client (HUD, Combat, Movement, PlotSelection & Shop) erfolgreich gebootet.")

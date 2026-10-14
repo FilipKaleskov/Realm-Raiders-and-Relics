@@ -17,12 +17,14 @@ export type MaterialsData = {
 
 export type InventoryData = {
 	Weapons: { string },
+	EquippedWeapon: string,
 	Materials: MaterialsData,
 	Cores: { any },
 }
 
 export type BaseData = {
 	Slots: { [number]: BaseSlot? },
+	UnlockedSlots: { [number]: boolean },
 	Defenses: DefensesData,
 }
 
@@ -39,6 +41,7 @@ local PlayerDataTemplate: PlayerData = {
 	Gems = 0,
 	Inventory = {
 		Weapons = { "RustySword" },
+		EquippedWeapon = "RustySword",
 		Materials = {
 			IronOre = 0,
 			VoidCrystal = 0,
@@ -53,6 +56,11 @@ local PlayerDataTemplate: PlayerData = {
 			},
 			[2] = nil,
 			[3] = nil,
+		},
+		UnlockedSlots = {
+			[1] = true,
+			[2] = false,
+			[3] = false,
 		},
 		Defenses = {
 			Spikes = 2,

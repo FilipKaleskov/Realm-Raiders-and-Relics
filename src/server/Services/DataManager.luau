@@ -63,9 +63,27 @@ local function getOrCreateRemoteEvent(parent: Instance, name: string): RemoteEve
 	return newRemote
 end
 
+local ConfigFolder = Shared:WaitForChild("Config")
+local ItemConfigModule = ConfigFolder:WaitForChild("ItemConfig") :: ModuleScript
+local ItemConfig = require(ItemConfigModule)
+
 local EventsFolder = getOrCreateEventsFolder()
 local InventoryUpdatedEvent = getOrCreateRemoteEvent(EventsFolder, "InventoryUpdated")
 local RequestInventoryEvent = getOrCreateRemoteEvent(EventsFolder, "RequestInventory")
+local GoldUpdatedEvent = getOrCreateRemoteEvent(EventsFolder, "GoldUpdated")
+local ShowNotificationEvent = getOrCreateRemoteEvent(EventsFolder, "ShowNotification")
+local BuyWeaponIntentEvent = getOrCreateRemoteEvent(EventsFolder, "BuyWeaponIntent")
+local EquipWeaponIntentEvent = getOrCreateRemoteEvent(EventsFolder, "EquipWeaponIntent")
+local UnlockSlotIntentEvent = getOrCreateRemoteEvent(EventsFolder, "UnlockSlotIntent")
+local BuyDefenseIntentEvent = getOrCreateRemoteEvent(EventsFolder, "BuyDefenseIntent")
+
+local function getPlotService()
+	return require(ServerScriptService.Server.Services.PlotService)
+end
+
+local function getDefenseService()
+	return require(ServerScriptService.Server.Services.DefenseService)
+end
 
 local Profiles: { [Player]: Profile } = {}
 local isInitialized = false
@@ -87,6 +105,25 @@ local function onPlayerAdded(player: Player)
 		end)
 
 		if player:IsDescendantOf(Players) then
+			-- Reconcile für neue Schema-Eigenschaften
+			local data = profile.Data
+			if data.Inventory then
+				if data.Inventory.EquippedWeapon == nil then
+					data.Inventory.EquippedWeapon = if data.Inventory.Weapons and data.Inventory.Weapons[1]
+						then data.Inventory.Weapons[1]
+						else "RustySword"
+				end
+			end
+			if data.BaseData then
+				if data.BaseData.UnlockedSlots == nil then
+					data.BaseData.UnlockedSlots = {
+						[1] = true,
+						[2] = false,
+						[3] = false,
+					}
+				end
+			end
+
 			Profiles[player] = profile
 			print(string.format("[DataManager] Profil erfolgreich geladen für %s (%d)", player.Name, player.UserId))
 			task.defer(function()
@@ -273,6 +310,165 @@ function DataManager.UpgradeSlot(player: Player, slotIndex: number, cost: number
 	return true
 end
 
+-- Öffentliche API: Rüstet eine Waffe aus, falls der Spieler sie besitzt
+function DataManager.EquipWeapon(player: Player, weaponId: string): (boolean, string)
+	local profile = Profiles[player]
+	if profile == nil or not profile:IsActive() then
+		return false, "Profil nicht aktiv"
+	end
+
+	local weapons = profile.Data.Inventory.Weapons
+	if not table.find(weapons, weaponId) then
+		return false, "Du besitzt diese Waffe nicht!"
+	end
+
+	profile.Data.Inventory.EquippedWeapon = weaponId
+	DataManager.SyncInventory(player)
+	local itemInfo = ItemConfig[weaponId]
+	local name = if itemInfo then itemInfo.DisplayName else weaponId
+	return true, string.format("🗡️ %s ausgerüstet!", name)
+end
+
+-- Öffentliche API: Kauft und schmiedet eine Waffe
+function DataManager.BuyWeapon(player: Player, weaponId: string): (boolean, string)
+	local profile = Profiles[player]
+	if profile == nil or not profile:IsActive() then
+		return false, "Profil nicht aktiv"
+	end
+
+	local itemInfo = ItemConfig[weaponId]
+	if not itemInfo or itemInfo.Category ~= "Weapon" then
+		return false, "Ungültige Waffe!"
+	end
+
+	local data = profile.Data
+	if table.find(data.Inventory.Weapons, weaponId) then
+		-- Wenn bereits gekauft, rüste sie direkt aus
+		return DataManager.EquipWeapon(player, weaponId)
+	end
+
+	local costGold = itemInfo.CostGold or 0
+	if data.Gold < costGold then
+		return false, string.format("Nicht genug Gold! Du benötigst %d Gold.", costGold)
+	end
+
+	local costMats = itemInfo.CostMaterials or {}
+	for matKey, requiredAmount in pairs(costMats) do
+		local currentAmount = data.Inventory.Materials[matKey] or 0
+		if currentAmount < requiredAmount then
+			local matInfo = ItemConfig[matKey]
+			local matName = if matInfo then matInfo.DisplayName else matKey
+			return false, string.format("Nicht genug %s! Benötigt: %d (Du hast: %d)", matName, requiredAmount, currentAmount)
+		end
+	end
+
+	-- Transaktion durchführen
+	data.Gold -= costGold
+	for matKey, requiredAmount in pairs(costMats) do
+		data.Inventory.Materials[matKey] = (data.Inventory.Materials[matKey] or 0) - requiredAmount
+	end
+
+	table.insert(data.Inventory.Weapons, weaponId)
+	data.Inventory.EquippedWeapon = weaponId
+
+	DataManager.SyncInventory(player)
+	GoldUpdatedEvent:FireClient(player, data.Gold)
+
+	return true, string.format("🎉 %s erfolgreich geschmiedet und ausgerüstet!", itemInfo.DisplayName)
+end
+
+-- Öffentliche API: Schaltet einen gesperrten Statuen-Sockel auf der Basis frei
+function DataManager.UnlockSlot(player: Player, slotIndex: number): (boolean, string)
+	local profile = Profiles[player]
+	if profile == nil or not profile:IsActive() then
+		return false, "Profil nicht aktiv"
+	end
+
+	if slotIndex < 2 or slotIndex > 3 then
+		return false, "Ungültiger Sockel-Index"
+	end
+
+	local data = profile.Data
+	if data.BaseData.UnlockedSlots and data.BaseData.UnlockedSlots[slotIndex] == true then
+		return false, "Dieser Sockel ist bereits freigeschaltet!"
+	end
+
+	local shopConfig = (ItemConfig :: any).Shop
+	local unlockInfo = if shopConfig and shopConfig.SlotUnlocks then shopConfig.SlotUnlocks[slotIndex] else nil
+	local cost = if unlockInfo then unlockInfo.CostGold else (if slotIndex == 2 then 500 else 2000)
+
+	if data.Gold < cost then
+		return false, string.format("Nicht genug Gold! Freischaltung kostet %d Gold.", cost)
+	end
+
+	data.Gold -= cost
+	if not data.BaseData.UnlockedSlots then
+		data.BaseData.UnlockedSlots = { [1] = true, [2] = false, [3] = false }
+	end
+	data.BaseData.UnlockedSlots[slotIndex] = true
+
+	-- Plot visualisieren & CPS updaten
+	local plotService = getPlotService()
+	plotService.UpdatePlotVisuals(player)
+	GoldUpdatedEvent:FireClient(player, data.Gold, plotService.CalculateCPS(player))
+
+	return true, string.format("🏰 Sockel %d erfolgreich freigeschaltet!", slotIndex)
+end
+
+-- Öffentliche API: Kauft Basis-Verteidigung (Stachelfallen oder Wächter-Minions)
+function DataManager.BuyDefense(player: Player, defenseType: "Spikes" | "Guards"): (boolean, string)
+	local profile = Profiles[player]
+	if profile == nil or not profile:IsActive() then
+		return false, "Profil nicht aktiv"
+	end
+
+	local shopConfig = (ItemConfig :: any).Shop
+	local defInfo = if shopConfig and shopConfig.Defenses then shopConfig.Defenses[defenseType] else nil
+	if not defInfo then
+		return false, "Ungültiger Verteidigungs-Typ"
+	end
+
+	local data = profile.Data
+	local currentCount = data.BaseData.Defenses[defenseType] or 0
+	if currentCount >= defInfo.MaxCount then
+		return false, string.format("Maximale Anzahl an %s erreicht! (Max: %d)", defInfo.DisplayName, defInfo.MaxCount)
+	end
+
+	if data.Gold < defInfo.CostGold then
+		return false, string.format("Nicht genug Gold! Kostet %d Gold.", defInfo.CostGold)
+	end
+
+	for matKey, requiredAmount in pairs(defInfo.CostMaterials) do
+		local currentAmount = data.Inventory.Materials[matKey] or 0
+		if currentAmount < requiredAmount then
+			local matInfo = ItemConfig[matKey]
+			local matName = if matInfo then matInfo.DisplayName else matKey
+			return false, string.format("Nicht genug %s! Benötigt: %d (Du hast: %d)", matName, requiredAmount, currentAmount)
+		end
+	end
+
+	-- Transaktion
+	data.Gold -= defInfo.CostGold
+	for matKey, requiredAmount in pairs(defInfo.CostMaterials) do
+		data.Inventory.Materials[matKey] = (data.Inventory.Materials[matKey] or 0) - requiredAmount
+	end
+
+	data.BaseData.Defenses[defenseType] = currentCount + 1
+
+	-- Defenses auf Plot sofort neu aufbauen
+	local plotService = getPlotService()
+	local plot = plotService.GetPlayerPlot(player)
+	if plot then
+		local defenseService = getDefenseService()
+		defenseService.SetupPlotDefenses(plot, player.UserId)
+	end
+
+	DataManager.SyncInventory(player)
+	GoldUpdatedEvent:FireClient(player, data.Gold, plotService.CalculateCPS(player))
+
+	return true, string.format("🛡️ %s erfolgreich aufgestellt! (%d/%d)", defInfo.DisplayName, currentCount + 1, defInfo.MaxCount)
+end
+
 local requestInventoryCooldowns: { [Player]: number } = {}
 
 -- Intern: Wenn ein Spieler den Server verlässt (mit Cooldown-Bereinigung)
@@ -304,6 +500,52 @@ function DataManager.Init()
 		end
 		requestInventoryCooldowns[player] = now
 		DataManager.SyncInventory(player)
+	end)
+
+	local shopActionCooldowns: { [Player]: number } = {}
+
+	-- Waffe schmieden / kaufen
+	BuyWeaponIntentEvent.OnServerEvent:Connect(function(player: Player, weaponId: any)
+		if typeof(weaponId) ~= "string" then return end
+		local now = os.clock()
+		if now - (shopActionCooldowns[player] or 0) < 0.25 then return end
+		shopActionCooldowns[player] = now
+
+		local success, message = DataManager.BuyWeapon(player, weaponId)
+		ShowNotificationEvent:FireClient(player, message, not success)
+	end)
+
+	-- Waffe ausrüsten
+	EquipWeaponIntentEvent.OnServerEvent:Connect(function(player: Player, weaponId: any)
+		if typeof(weaponId) ~= "string" then return end
+		local now = os.clock()
+		if now - (shopActionCooldowns[player] or 0) < 0.25 then return end
+		shopActionCooldowns[player] = now
+
+		local success, message = DataManager.EquipWeapon(player, weaponId)
+		ShowNotificationEvent:FireClient(player, message, not success)
+	end)
+
+	-- Sockel freischalten
+	UnlockSlotIntentEvent.OnServerEvent:Connect(function(player: Player, slotIndex: any)
+		if typeof(slotIndex) ~= "number" then return end
+		local now = os.clock()
+		if now - (shopActionCooldowns[player] or 0) < 0.25 then return end
+		shopActionCooldowns[player] = now
+
+		local success, message = DataManager.UnlockSlot(player, slotIndex)
+		ShowNotificationEvent:FireClient(player, message, not success)
+	end)
+
+	-- Verteidigung kaufen
+	BuyDefenseIntentEvent.OnServerEvent:Connect(function(player: Player, defenseType: any)
+		if defenseType ~= "Spikes" and defenseType ~= "Guards" then return end
+		local now = os.clock()
+		if now - (shopActionCooldowns[player] or 0) < 0.25 then return end
+		shopActionCooldowns[player] = now
+
+		local success, message = DataManager.BuyDefense(player, defenseType)
+		ShowNotificationEvent:FireClient(player, message, not success)
 	end)
 
 	-- Server-Shutdown Absicherung (SE-6: BindToClose Timeout - paralleles Freigeben aller Profile)

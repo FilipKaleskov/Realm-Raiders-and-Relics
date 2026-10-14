@@ -550,6 +550,39 @@ local function setupPedestalPrompts(pedestal: Instance, player: Player, slotInde
 	local rightAtt = getOrCreateAttachment(pedestalPart, "PromptRightAtt", Vector3.new(2.2, 0.8, 0))
 	local centerAtt = getOrCreateAttachment(pedestalPart, "PromptCenterAtt", Vector3.new(0, 0.8, 0))
 
+	-- Prüfe, ob dieser Sockel beim Besitzer freigeschaltet ist (Slot 1 immer frei, Slot 2 & 3 über Shop/Gold)
+	local playerData = DataManager.Get(player)
+	local isUnlocked = if slotIndex == 1
+		then true
+		else (if playerData and playerData.BaseData and playerData.BaseData.UnlockedSlots
+			then (playerData.BaseData.UnlockedSlots[slotIndex] == true)
+			else false)
+
+	if not isUnlocked then
+		local unlockCost = if slotIndex == 2 then 500 else 2000
+		local unlockPrompt = Instance.new("ProximityPrompt")
+		unlockPrompt.Name = "UnlockPrompt"
+		unlockPrompt.ActionText = string.format("Freischalten (%d Gold)", unlockCost)
+		unlockPrompt.ObjectText = string.format("🔒 Sockel %d gesperrt", slotIndex)
+		unlockPrompt.KeyboardKeyCode = Enum.KeyCode.E
+		unlockPrompt.HoldDuration = 0.5
+		unlockPrompt.MaxActivationDistance = 12
+		unlockPrompt.RequiresLineOfSight = false
+		unlockPrompt.Exclusivity = Enum.ProximityPromptExclusivity.OnePerButton
+		unlockPrompt:SetAttribute("OwnerUserId", player.UserId)
+		unlockPrompt.Parent = centerAtt
+
+		unlockPrompt.Triggered:Connect(function(triggeringPlayer: Player)
+			if triggeringPlayer ~= player then
+				notifyPlayer(triggeringPlayer, "Dieser Sockel gehört " .. player.DisplayName .. "!", true)
+				return
+			end
+			local success, message = DataManager.UnlockSlot(player, slotIndex)
+			notifyPlayer(player, message, not success)
+		end)
+		return
+	end
+
 	if slotData and slotData.CoreId then
 		local bossInfo = BossConfig[slotData.CoreId]
 		local level = slotData.Level or 1
@@ -760,7 +793,26 @@ function PlotService.UpdatePlotVisuals(player: Player)
 			local billboard = pedestalPart:FindFirstChild("PlotInfo") :: BillboardGui? or (pedestal:FindFirstChild("PlotInfo") :: BillboardGui?)
 			local label = if billboard then billboard:FindFirstChild("Label") :: TextLabel? else nil
 
-			if slotData and slotData.CoreId then
+			local isUnlocked = if slotIndex == 1
+				then true
+				else (if data.BaseData.UnlockedSlots
+					then (data.BaseData.UnlockedSlots[slotIndex] == true)
+					else false)
+
+			if not isUnlocked then
+				local unlockCost = if slotIndex == 2 then 500 else 2000
+				if label then
+					label.Text = string.format("Slot %d: 🔒 Gesperrt\n(%d Gold zum Freischalten)", slotIndex, unlockCost)
+					label.TextColor3 = Color3.fromRGB(255, 180, 50)
+				end
+				if billboard then
+					billboard.StudsOffset = Vector3.new(0, 2.8, 0)
+				end
+				local existingStatue = pedestal:FindFirstChild("StatueModel") or pedestalPart:FindFirstChild("StatueModel")
+				if existingStatue then existingStatue:Destroy() end
+				local existingCore = pedestal:FindFirstChild("CoreModel") or pedestalPart:FindFirstChild("CoreModel")
+				if existingCore then existingCore:Destroy() end
+			elseif slotData and slotData.CoreId then
 				local bossInfo = BossConfig[slotData.CoreId]
 				local displayName = if bossInfo then bossInfo.DisplayName else slotData.CoreId
 				local level = slotData.Level or 1

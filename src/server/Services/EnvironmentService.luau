@@ -3,6 +3,11 @@
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local EventsFolder = Shared:WaitForChild("Events")
+local OpenShopWindowEvent = EventsFolder:WaitForChild("OpenShopWindow") :: RemoteEvent
 
 local EnvironmentService = {}
 local isInitialized = false
@@ -112,6 +117,159 @@ local function createMainPlateau(envFolder: Folder): Model
 	end
 
 	return plateauModel
+end
+
+-- Erstellt den atmosphärischen Waffen-Schmiede-Stand auf der zentralen Allee
+local function createBlacksmithShop(envFolder: Folder): Model
+	local shopModel = Instance.new("Model")
+	shopModel.Name = "BlacksmithShop"
+	shopModel.Parent = envFolder
+
+	local origin = Vector3.new(0, 0.2, -6.5)
+
+	-- 1. Holz-Werkstatt-Podest
+	local deck = Instance.new("Part")
+	deck.Name = "ShopDeck"
+	deck.Size = Vector3.new(12, 0.4, 6)
+	deck.Position = origin + Vector3.new(0, 0.2, 0)
+	deck.Color = Color3.fromRGB(80, 55, 38)
+	deck.Material = Enum.Material.WoodPlanks
+	deck.Anchored = true
+	deck.CanCollide = true
+	deck.Parent = shopModel
+
+	-- 2. Amboss-Sockel (Massiver Eichenholz-Block)
+	local anvilLog = Instance.new("Part")
+	anvilLog.Name = "AnvilLog"
+	anvilLog.Size = Vector3.new(2.4, 2.2, 2.4)
+	anvilLog.Position = origin + Vector3.new(0, 1.3, 0)
+	anvilLog.Color = Color3.fromRGB(65, 45, 30)
+	anvilLog.Material = Enum.Material.Wood
+	anvilLog.Anchored = true
+	anvilLog.CanCollide = true
+	anvilLog.Parent = shopModel
+
+	-- 3. Amboss (Schweres Schmiedeeisen)
+	local anvilBase = Instance.new("Part")
+	anvilBase.Name = "AnvilBase"
+	anvilBase.Size = Vector3.new(3.4, 1.2, 1.6)
+	anvilBase.Position = origin + Vector3.new(0, 2.8, 0)
+	anvilBase.Color = Color3.fromRGB(35, 38, 42)
+	anvilBase.Material = Enum.Material.Metal
+	anvilBase.Anchored = true
+	anvilBase.CanCollide = true
+	anvilBase.Parent = shopModel
+
+	local anvilHorn = Instance.new("Part")
+	anvilHorn.Name = "AnvilHorn"
+	anvilHorn.Size = Vector3.new(1.4, 0.8, 1.0)
+	anvilHorn.Position = origin + Vector3.new(-2.0, 2.8, 0)
+	anvilHorn.Color = Color3.fromRGB(42, 45, 50)
+	anvilHorn.Material = Enum.Material.Metal
+	anvilHorn.Anchored = true
+	anvilHorn.CanCollide = false
+	anvilHorn.Parent = shopModel
+
+	-- 4. Glühender Eisenbarren auf dem Amboss
+	local glowingBillet = Instance.new("Part")
+	glowingBillet.Name = "GlowingSteel"
+	glowingBillet.Size = Vector3.new(1.6, 0.3, 0.7)
+	glowingBillet.Position = origin + Vector3.new(0, 3.55, 0)
+	glowingBillet.Color = Color3.fromRGB(255, 115, 20)
+	glowingBillet.Material = Enum.Material.Neon
+	glowingBillet.Anchored = true
+	glowingBillet.CanCollide = false
+	glowingBillet.Parent = shopModel
+
+	local glowLight = Instance.new("PointLight")
+	glowLight.Color = Color3.fromRGB(255, 140, 30)
+	glowLight.Brightness = 1.6
+	glowLight.Range = 12
+	glowLight.Parent = glowingBillet
+
+	-- 5. Stein-Schmiedeofen mit Glut
+	local forgeOven = Instance.new("Part")
+	forgeOven.Name = "ForgeOven"
+	forgeOven.Size = Vector3.new(3.6, 5.0, 3.6)
+	forgeOven.Position = origin + Vector3.new(4.2, 2.5, 0)
+	forgeOven.Color = Color3.fromRGB(50, 52, 56)
+	forgeOven.Material = Enum.Material.Cobblestone
+	forgeOven.Anchored = true
+	forgeOven.CanCollide = true
+	forgeOven.Parent = shopModel
+
+	local coalGlow = Instance.new("Part")
+	coalGlow.Name = "CoalGlow"
+	coalGlow.Size = Vector3.new(2.2, 0.6, 1.2)
+	coalGlow.Position = origin + Vector3.new(4.2, 1.8, 1.3)
+	coalGlow.Color = Color3.fromRGB(255, 80, 15)
+	coalGlow.Material = Enum.Material.Neon
+	coalGlow.Anchored = true
+	coalGlow.CanCollide = false
+	coalGlow.Parent = shopModel
+
+	-- 6. Ausstellungs-Waffenständer (Links)
+	local weaponRack = Instance.new("Part")
+	weaponRack.Name = "WeaponRack"
+	weaponRack.Size = Vector3.new(2.8, 3.6, 0.8)
+	weaponRack.Position = origin + Vector3.new(-4.2, 1.8, 0)
+	weaponRack.Color = Color3.fromRGB(75, 52, 35)
+	weaponRack.Material = Enum.Material.WoodPlanks
+	weaponRack.Anchored = true
+	weaponRack.CanCollide = true
+	weaponRack.Parent = shopModel
+
+	-- 7. 3D-Billboard über dem Amboss
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "ShopSign"
+	billboard.Size = UDim2.new(0, 240, 0, 70)
+	billboard.StudsOffset = Vector3.new(0, 4.2, 0)
+	billboard.AlwaysOnTop = false
+	billboard.MaxDistance = 60
+	billboard.Parent = anvilBase
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Title"
+	label.Size = UDim2.new(1, 0, 0.55, 0)
+	label.Position = UDim2.new(0, 0, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Text = "⚔️ WAFFEN-SCHMIEDE"
+	label.Font = Enum.Font.GothamBlack
+	label.TextSize = 20
+	label.TextColor3 = Color3.fromRGB(255, 215, 60)
+	label.TextStrokeTransparency = 0.2
+	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	label.Parent = billboard
+
+	local sub = Instance.new("TextLabel")
+	sub.Name = "Sub"
+	sub.Size = UDim2.new(1, 0, 0.45, 0)
+	sub.Position = UDim2.new(0, 0, 0.55, 0)
+	sub.BackgroundTransparency = 1
+	sub.Text = "Waffen schmieden & Upgrades"
+	sub.Font = Enum.Font.GothamMedium
+	sub.TextSize = 13
+	sub.TextColor3 = Color3.fromRGB(220, 225, 235)
+	sub.TextStrokeTransparency = 0.4
+	sub.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	sub.Parent = billboard
+
+	-- 8. ProximityPrompt zum Öffnen des Shop-Guis
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "ShopPrompt"
+	prompt.ActionText = "Schmiede & Shop öffnen"
+	prompt.ObjectText = "Waffen-Schmiede"
+	prompt.KeyboardKeyCode = Enum.KeyCode.E
+	prompt.HoldDuration = 0
+	prompt.MaxActivationDistance = 14
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = anvilBase
+
+	prompt.Triggered:Connect(function(player: Player)
+		OpenShopWindowEvent:FireClient(player)
+	end)
+
+	return shopModel
 end
 
 -- Erstellt den giftgrünen Säure-Abgrund tief unter den Inseln & Brücken
@@ -451,7 +609,10 @@ function EnvironmentService.Init()
 	-- 6. Fackeln in der Boss-Arena
 	setupBossArenaAtmosphere(envFolder)
 
-	print("[EnvironmentService] Welt erfolgreich aufgebaut: Säure-Abgrund, Hängebrücke & Fackeln aktiv.")
+	-- 7. Waffen-Schmiede & Shop auf der Haupt-Allee
+	createBlacksmithShop(envFolder)
+
+	print("[EnvironmentService] Welt erfolgreich aufgebaut: Säure-Abgrund, Hängebrücke, Schmiede & Fackeln aktiv.")
 end
 
 -- Für die Studio-Befehlszeile (Baut die Welt direkt im Edit-Modus auf)

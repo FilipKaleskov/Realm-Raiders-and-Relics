@@ -32,6 +32,11 @@ local function ensureRemoteEvents(): Folder
 		"PlotStatusUpdated",
 		"ClaimPlotIntent",
 		"RequestPlotStatus",
+		"BuyWeaponIntent",
+		"EquipWeaponIntent",
+		"UnlockSlotIntent",
+		"BuyDefenseIntent",
+		"OpenShopWindow",
 	}
 
 	for _, name in remoteNames do

@@ -14,12 +14,19 @@ local EventsFolder = Shared:WaitForChild("Events")
 local AttackIntent = EventsFolder:WaitForChild("AttackIntent") :: RemoteEvent
 local BossTelegraph = EventsFolder:WaitForChild("BossTelegraphStarted") :: RemoteEvent
 local BossDefeated = EventsFolder:WaitForChild("BossDefeated") :: RemoteEvent
+local InventoryUpdated = EventsFolder:WaitForChild("InventoryUpdated") :: RemoteEvent
+
+local ConfigFolder = Shared:WaitForChild("Config")
+local ItemConfigModule = ConfigFolder:WaitForChild("ItemConfig") :: ModuleScript
+local ItemConfig = require(ItemConfigModule)
 
 local CombatController = {}
 local isInitialized = false
 local lastAttackTime = 0
 local lastDashTime = 0
 local DASH_COOLDOWN = 1.2
+local currentAttackCooldown = 0.35
+local equippedWeaponId = "RustySword"
 
 -- Spielt einen kleinen visuellen Schwertschwung / Screenshake ab
 local function playAttackFeedback()
@@ -44,27 +51,31 @@ local function playAttackFeedback()
 		reset:Play()
 	end)
 
-	-- Klingen-Schwung-Trail: Cyan/Gold-Bogen der Klinge
+	-- Klingen-Schwung-Trail: Farbe & Stil passen sich der ausgerüsteten Waffe an
 	local char = LocalPlayer.Character
 	if char then
 		local root = char:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if root then
+			local itemInfo = ItemConfig[equippedWeaponId]
+			local mainColor = if itemInfo and itemInfo.TrailColor then itemInfo.TrailColor else Color3.fromRGB(255, 220, 60)
+			local secColor = if itemInfo and itemInfo.TrailSecondaryColor then itemInfo.TrailSecondaryColor else Color3.fromRGB(255, 160, 0)
+
 			local slashPart = Instance.new("Part")
 			slashPart.Name = "SlashTrail"
-			slashPart.Size = Vector3.new(0.1, 4.5, 0.1)
+			slashPart.Size = Vector3.new(0.1, 4.8, 0.1)
 			slashPart.CFrame = root.CFrame * CFrame.new(0, 0.5, -2.5) * CFrame.Angles(math.rad(45), 0, 0)
 			slashPart.Material = Enum.Material.Neon
-			slashPart.Color = Color3.fromRGB(255, 220, 60)
+			slashPart.Color = mainColor
 			slashPart.CanCollide = false
 			slashPart.Anchored = true
 			slashPart.Parent = Workspace
 
 			-- Schimmer-Trail-Part (breiterer Lichtbogen)
 			local trailAtt0 = Instance.new("Attachment")
-			trailAtt0.Position = Vector3.new(0, 2.2, 0)
+			trailAtt0.Position = Vector3.new(0, 2.4, 0)
 			trailAtt0.Parent = slashPart
 			local trailAtt1 = Instance.new("Attachment")
-			trailAtt1.Position = Vector3.new(0, -2.2, 0)
+			trailAtt1.Position = Vector3.new(0, -2.4, 0)
 			trailAtt1.Parent = slashPart
 			local trail = Instance.new("Trail")
 			trail.Attachment0 = trailAtt0
@@ -72,8 +83,8 @@ local function playAttackFeedback()
 			trail.Lifetime = 0.18
 			trail.MinLength = 0
 			trail.Color = ColorSequence.new{
-				ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 245, 120)),
-				ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 160, 0)),
+				ColorSequenceKeypoint.new(0, mainColor),
+				ColorSequenceKeypoint.new(1, secColor),
 			}
 			trail.Transparency = NumberSequence.new{ NumberSequenceKeypoint.new(0, 0.0), NumberSequenceKeypoint.new(1, 1.0) }
 			trail.WidthScale = NumberSequence.new(1)
@@ -329,7 +340,7 @@ local function onInputBegan(input: InputObject, gameProcessed: boolean)
 		or input.KeyCode == Enum.KeyCode.F then
 
 		local now = os.clock()
-		if now - lastAttackTime < 0.35 then
+		if now - lastAttackTime < currentAttackCooldown then
 			return
 		end
 		lastAttackTime = now
@@ -355,6 +366,17 @@ function CombatController.Init()
 	isInitialized = true
 
 	UserInputService.InputBegan:Connect(onInputBegan)
+
+	-- Inventar-Updates abhören, um ausgerüstete Waffe & Cooldowns synchron zu halten
+	InventoryUpdated.OnClientEvent:Connect(function(inventoryData: any)
+		if inventoryData and inventoryData.EquippedWeapon then
+			equippedWeaponId = inventoryData.EquippedWeapon
+			local itemInfo = ItemConfig[equippedWeaponId]
+			if itemInfo and itemInfo.Cooldown then
+				currentAttackCooldown = itemInfo.Cooldown
+			end
+		end
+	end)
 
 	BossTelegraph.OnClientEvent:Connect(function(_pos: Vector3, _radius: number, _duration: number)
 		playWarningShake()

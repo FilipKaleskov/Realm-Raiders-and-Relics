@@ -1,7 +1,6 @@
 --!strict
 
 local Players = game:GetService("Players")
-local Lighting = game:GetService("Lighting")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
@@ -75,54 +74,7 @@ function EnvironmentService.CreateBrazier(position: Vector3, parent: Instance): 
 	return brazier
 end
 
--- Richtet die Nacht-Beleuchtung & Post-Processing-Effekte ein (wie im Pitch-Video)
-local function setupCinematicLighting()
-	Lighting.ClockTime = 0.5 -- Tiefe Mitternacht
-	Lighting.Brightness = 1.2
-	Lighting.Ambient = Color3.fromRGB(18, 22, 34)
-	Lighting.OutdoorAmbient = Color3.fromRGB(26, 32, 50)
-	Lighting.GlobalShadows = true
-	Lighting.ShadowSoftness = 0.2
 
-	-- 1. Bloom-Effekt (lässt Neon-Säure, Lila Kristall und Flammen strahlen)
-	local bloom = Lighting:FindFirstChild("CinematicBloom") :: BloomEffect?
-	if not bloom then
-		bloom = Instance.new("BloomEffect")
-		bloom.Name = "CinematicBloom"
-		bloom.Parent = Lighting
-	end
-	bloom.Threshold = 0.72
-	bloom.Intensity = 0.65
-	bloom.Size = 24
-
-	-- 2. ColorCorrection (Sattes Farb-Shading & Kontrast)
-	local cc = Lighting:FindFirstChild("CinematicColorCorrection") :: ColorCorrectionEffect?
-	if not cc then
-		cc = Instance.new("ColorCorrectionEffect")
-		cc.Name = "CinematicColorCorrection"
-		cc.Parent = Lighting
-	end
-	cc.Contrast = 0.16
-	cc.Saturation = 0.28
-	cc.Brightness = -0.02
-	cc.TintColor = Color3.fromRGB(255, 255, 255)
-
-	-- 3. Atmosphäre (Nebel & mystische Stimmung)
-	local atm = Lighting:FindFirstChild("CinematicAtmosphere") :: Atmosphere?
-	if not atm then
-		atm = Instance.new("Atmosphere")
-		atm.Name = "CinematicAtmosphere"
-		atm.Parent = Lighting
-	end
-	atm.Density = 0.32
-	atm.Offset = 0.25
-	atm.Color = Color3.fromRGB(28, 36, 52)
-	atm.Decay = Color3.fromRGB(15, 20, 30)
-	atm.Glare = 0.15
-	atm.Haze = 1.2
-
-	print("[EnvironmentService] Nacht-Lighting & Post-Processing aktiviert.")
-end
 
 -- Erstellt das schwebende Fels-Plateau unter den Plots inklusive zentraler Allee
 local function createMainPlateau(envFolder: Folder): Model
@@ -168,14 +120,14 @@ local function createToxicAcidLake(envFolder: Folder): Model
 	acidModel.Name = "ToxicAcidLake"
 	acidModel.Parent = envFolder
 
-	-- Haupt-Säurefläche (Leuchtendes Neongrün)
+	-- Haupt-Säurefläche (Klares Giftgrün, ohne Neon-Glow / ohne Nebelpartikel)
 	local acidTop = Instance.new("Part")
 	acidTop.Name = "AcidSurface"
 	acidTop.Size = Vector3.new(800, 4, 800)
 	acidTop.Position = Vector3.new(50, -22, 0)
-	acidTop.Color = Color3.fromRGB(48, 255, 32) -- Knalliges Giftgrün wie im Video
-	acidTop.Material = Enum.Material.Neon
-	acidTop.Transparency = 0.1
+	acidTop.Color = Color3.fromRGB(35, 175, 25)
+	acidTop.Material = Enum.Material.SmoothPlastic
+	acidTop.Transparency = 0.2
 	acidTop.Anchored = true
 	acidTop.CanCollide = false
 	acidTop.CastShadow = false
@@ -186,7 +138,7 @@ local function createToxicAcidLake(envFolder: Folder): Model
 	acidDeep.Name = "AcidDeep"
 	acidDeep.Size = Vector3.new(802, 8, 802)
 	acidDeep.Position = Vector3.new(50, -26, 0)
-	acidDeep.Color = Color3.fromRGB(15, 120, 10)
+	acidDeep.Color = Color3.fromRGB(15, 90, 10)
 	acidDeep.Material = Enum.Material.SmoothPlastic
 	acidDeep.Anchored = true
 	acidDeep.CanCollide = false
@@ -208,41 +160,6 @@ local function createToxicAcidLake(envFolder: Folder): Model
 			end
 		end
 	end)
-
-	-- Aufsteigende giftige Dunstpartikel
-	local mistAtt = Instance.new("Attachment")
-	mistAtt.Name = "MistAtt"
-	mistAtt.Position = Vector3.new(0, 2, 0)
-	mistAtt.Parent = acidTop
-
-	local mist = Instance.new("ParticleEmitter")
-	mist.Name = "AcidMist"
-	mist.Rate = 35
-	mist.Lifetime = NumberRange.new(3.0, 5.5)
-	mist.Speed = NumberRange.new(2.0, 4.5)
-	mist.SpreadAngle = Vector2.new(45, 45)
-	mist.Size = NumberSequence.new{
-		NumberSequenceKeypoint.new(0, 1.5),
-		NumberSequenceKeypoint.new(0.5, 4.0),
-		NumberSequenceKeypoint.new(1, 6.0),
-	}
-	mist.Transparency = NumberSequence.new{
-		NumberSequenceKeypoint.new(0, 0.95),
-		NumberSequenceKeypoint.new(0.4, 0.75),
-		NumberSequenceKeypoint.new(1, 1.0),
-	}
-	mist.Color = ColorSequence.new(Color3.fromRGB(60, 255, 40))
-	mist.LightEmission = 0.6
-	mist.Parent = mistAtt
-
-	-- Sanftes neongrünes Umgebungslicht
-	local greenLight = Instance.new("PointLight")
-	greenLight.Name = "AcidGlow"
-	greenLight.Color = Color3.fromRGB(48, 255, 32)
-	greenLight.Range = 70
-	greenLight.Brightness = 2.2
-	greenLight.Shadows = false
-	greenLight.Parent = acidTop
 
 	return acidModel
 end
@@ -487,13 +404,32 @@ function EnvironmentService.Init()
 		end
 	end
 
-	-- 1. Nacht-Lighting & Post-Processing
-	setupCinematicLighting()
+	-- Alle Nebel-, Dunst- und Überstrahleffekte aus Lighting & Terrain restlos aufräumen
+	local Lighting = game:GetService("Lighting")
+	for _, child in Lighting:GetChildren() do
+		if child:IsA("Atmosphere") or child:IsA("BloomEffect") or child.Name:find("Cinematic") then
+			child:Destroy()
+		end
+	end
+	Lighting.FogEnd = 100000
+	Lighting.FogStart = 0
 
-	-- Altes Environment aufräumen
+	local terrain = Workspace.Terrain
+	if terrain then
+		local clouds = terrain:FindFirstChildOfClass("Clouds")
+		if clouds then
+			clouds:Destroy()
+		end
+	end
+
+	-- Altes Environment & lose Säureseen aufräumen
 	local existingEnv = Workspace:FindFirstChild("Environment")
 	if existingEnv then
 		existingEnv:Destroy()
+	end
+	local looseLake = Workspace:FindFirstChild("ToxicAcidLake")
+	if looseLake then
+		looseLake:Destroy()
 	end
 
 	local envFolder = Instance.new("Folder")
@@ -515,7 +451,7 @@ function EnvironmentService.Init()
 	-- 6. Fackeln in der Boss-Arena
 	setupBossArenaAtmosphere(envFolder)
 
-	print("[EnvironmentService] Video-Welt erfolgreich aufgebaut: Nacht-Lighting, Säure-Abgrund, Hängebrücke & Fackeln aktiv.")
+	print("[EnvironmentService] Welt erfolgreich aufgebaut: Säure-Abgrund, Hängebrücke & Fackeln aktiv.")
 end
 
 -- Für die Studio-Befehlszeile (Baut die Welt direkt im Edit-Modus auf)

@@ -19,7 +19,7 @@ pcall(function() workspace.Baseplate:Destroy() end); pcall(function() workspace.
 pcall(function() workspace.Plots:Destroy() end); require(game.ServerScriptService.Server.Services.PlotService).Init(); require(game.ServerScriptService.Server.Services.DefenseService).Init()
 ```
 
-### 🌉 Nur Video-Umgebung aufbauen (Nacht-Lighting, Säuresee, Hängebrücke, **rote Sky-Beacons**, Fackeln):
+### 🌉 Nur Video-Umgebung aufbauen (Säuresee, Hängebrücke, **rote Sky-Beacons**, Fackeln):
 ```lua
 pcall(function() workspace.Baseplate:Destroy() end); require(game.ServerScriptService.Server.Services.EnvironmentService).Init()
 ```

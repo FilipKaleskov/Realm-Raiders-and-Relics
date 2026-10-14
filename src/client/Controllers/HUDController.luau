@@ -9,7 +9,6 @@ local RunService = game:GetService("RunService")
 local StarterGui = game:GetService("StarterGui")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local Workspace = game:GetService("Workspace")
-local Lighting = game:GetService("Lighting")
 local TextService = game:GetService("TextService")
 
 local LocalPlayer = Players.LocalPlayer
@@ -2382,23 +2381,11 @@ function HUDController.SetDimension(dimensionName: string)
 		if bossBarContainer then
 			bossBarContainer.Visible = false
 		end
-		-- Oberwelt-Atmosphäre: Strahlendes klares Tageslicht
-		Lighting.ClockTime = 14
-		Lighting.FogEnd = 100000
-		Lighting.FogStart = 0
-		Lighting.FogColor = Color3.fromRGB(192, 210, 230)
-		Lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
 	else
 		-- Wenn man die Boss-Welt betritt: Boss-Leiste wieder einblenden, falls der Boss aktiv ist
 		if cachedBossData and cachedBossData.IsAlive and cachedBossData.Health > 0 then
 			HUDController.UpdateBossBar(cachedBossData.Name, cachedBossData.Health, cachedBossData.MaxHealth, true)
 		end
-		-- Boss-Welt-Atmosphäre: Düsterer, geheimnisvoller Smaragd-Dunst & Dämmerung
-		Lighting.ClockTime = 20.5
-		Lighting.FogEnd = 240
-		Lighting.FogStart = 35
-		Lighting.FogColor = Color3.fromRGB(18, 35, 25)
-		Lighting.OutdoorAmbient = Color3.fromRGB(45, 55, 45)
 	end
 end
 

@@ -70,16 +70,16 @@ local function createPortalBrazier(position: Vector3, parent: Instance)
 	fireCore.Parent = parent
 
 	local fire = Instance.new("Fire")
-	fire.Size = 3.5
-	fire.Heat = 4
+	fire.Size = 2.0
+	fire.Heat = 2
 	fire.Color = Color3.fromRGB(255, 130, 30)
 	fire.SecondaryColor = Color3.fromRGB(255, 60, 10)
 	fire.Parent = fireCore
 
 	local light = Instance.new("PointLight")
 	light.Color = Color3.fromRGB(255, 155, 45)
-	light.Range = 18
-	light.Brightness = 1.8
+	light.Range = 14
+	light.Brightness = 1.0
 	light.Parent = fireCore
 end
 
@@ -184,9 +184,9 @@ local function createPortal(
 	crystal.Name = "AmethystCrystal"
 	crystal.Size = Vector3.new(3.8, 6.4, 3.8)
 	crystal.CFrame = crystalOrigin
-	crystal.Color = Color3.fromRGB(180, 50, 255) -- Mystisches Amethyst-Lila
-	crystal.Material = Enum.Material.Neon
-	crystal.Transparency = 0.15
+	crystal.Color = Color3.fromRGB(160, 45, 230) -- Reiner, klarer Amethyst
+	crystal.Material = Enum.Material.Glass
+	crystal.Transparency = 0.2
 	crystal.Anchored = true
 	crystal.CanCollide = false
 	crystal.Parent = portalModel
@@ -197,37 +197,37 @@ local function createPortal(
 	mesh.Scale = Vector3.new(1.0, 1.0, 1.0)
 	mesh.Parent = crystal
 
-	-- Heller Amethyst-Lichtschein
+	-- Dezenter, klarer Amethyst-Lichtschein (ohne Überstrahlung / kein Blendeffekt)
 	local crystalLight = Instance.new("PointLight")
 	crystalLight.Name = "CrystalLight"
-	crystalLight.Color = Color3.fromRGB(180, 50, 255)
-	crystalLight.Brightness = 3.2
-	crystalLight.Range = 32
+	crystalLight.Color = Color3.fromRGB(180, 60, 255)
+	crystalLight.Brightness = 1.0
+	crystalLight.Range = 16
 	crystalLight.Parent = crystal
 
-	-- Ethereale Partikel-Aura (schwebende lila Sternen-Funken & Runenstaub)
+	-- Feine, winzige Sternen-Funken (keine dichte Nebelwolke mehr)
 	local att = Instance.new("Attachment")
 	att.Name = "ParticleAtt"
 	att.Parent = crystal
 
 	local particles = Instance.new("ParticleEmitter")
 	particles.Name = "CrystalSparks"
-	particles.Rate = 22
-	particles.Lifetime = NumberRange.new(2.5, 4.0)
-	particles.Speed = NumberRange.new(1.2, 2.8)
+	particles.Rate = 5
+	particles.Lifetime = NumberRange.new(0.8, 1.4)
+	particles.Speed = NumberRange.new(0.4, 1.0)
 	particles.SpreadAngle = Vector2.new(180, 180)
 	particles.Size = NumberSequence.new{
-		NumberSequenceKeypoint.new(0, 0.8),
-		NumberSequenceKeypoint.new(0.5, 1.8),
-		NumberSequenceKeypoint.new(1, 0.2),
+		NumberSequenceKeypoint.new(0, 0.15),
+		NumberSequenceKeypoint.new(0.5, 0.25),
+		NumberSequenceKeypoint.new(1, 0.05),
 	}
 	particles.Transparency = NumberSequence.new{
-		NumberSequenceKeypoint.new(0, 0.2),
-		NumberSequenceKeypoint.new(0.8, 0.4),
+		NumberSequenceKeypoint.new(0, 0.3),
+		NumberSequenceKeypoint.new(0.8, 0.6),
 		NumberSequenceKeypoint.new(1, 1.0),
 	}
-	particles.Color = ColorSequence.new(Color3.fromRGB(215, 105, 255))
-	particles.LightEmission = 1.0
+	particles.Color = ColorSequence.new(Color3.fromRGB(225, 130, 255))
+	particles.LightEmission = 0.2
 	particles.Parent = att
 
 	-- Sanfte Rotation & Schwebung animieren

@@ -28,106 +28,150 @@ local DASH_COOLDOWN = 1.2
 local currentAttackCooldown = 0.35
 local equippedWeaponId = "RustySword"
 
+-- Prüft, ob sich die Kamera in der Egoperspektive (First-Person) befindet
+local function isFirstPerson(): boolean
+	if not Camera then
+		Camera = Workspace.CurrentCamera
+	end
+	if not Camera then
+		return false
+	end
+	local char = LocalPlayer.Character
+	if not char then
+		return false
+	end
+	local head = char:FindFirstChild("Head") :: BasePart?
+	if not head then
+		return false
+	end
+	return (Camera.CFrame.Position - head.Position).Magnitude < 1.4
+end
+
 -- Spielt einen kleinen visuellen Schwertschwung / Screenshake ab
 local function playAttackFeedback()
-	if not Camera then
+	local char = LocalPlayer.Character
+	if not char then
 		return
 	end
 
-	-- Subtiler Camera Punch
-	local origCFrame = Camera.CFrame
-	local punch = TweenService:Create(
-		Camera,
-		TweenInfo.new(0.05, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ CFrame = origCFrame * CFrame.Angles(0, 0, math.rad(0.8)) }
-	)
-	local reset = TweenService:Create(
-		Camera,
-		TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-		{ CFrame = origCFrame }
-	)
-	punch:Play()
-	punch.Completed:Connect(function()
-		reset:Play()
-	end)
+	-- Subtiler Camera Punch über Humanoid.CameraOffset (funktioniert nahtlos in First-Person & Third-Person ohne CFrame-Reset!)
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if hum and hum.Health > 0 then
+		local punchOffset = if isFirstPerson()
+			then Vector3.new(0.03, -0.05, -0.04)
+			else Vector3.new(0.04, -0.08, -0.06)
+
+		local punch = TweenService:Create(
+			hum,
+			TweenInfo.new(0.04, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ CameraOffset = punchOffset }
+		)
+		local reset = TweenService:Create(
+			hum,
+			TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+			{ CameraOffset = Vector3.zero }
+		)
+		punch:Play()
+		punch.Completed:Connect(function()
+			reset:Play()
+		end)
+	end
 
 	-- Klingen-Schwung-Trail: Farbe & Stil passen sich der ausgerüsteten Waffe an
-	local char = LocalPlayer.Character
-	if char then
-		local root = char:FindFirstChild("HumanoidRootPart") :: BasePart?
-		if root then
-			local itemInfo = ItemConfig[equippedWeaponId]
-			local mainColor = if itemInfo and itemInfo.TrailColor then itemInfo.TrailColor else Color3.fromRGB(255, 220, 60)
-			local secColor = if itemInfo and itemInfo.TrailSecondaryColor then itemInfo.TrailSecondaryColor else Color3.fromRGB(255, 160, 0)
-
-			local slashPart = Instance.new("Part")
-			slashPart.Name = "SlashTrail"
-			slashPart.Size = Vector3.new(0.1, 4.8, 0.1)
-			slashPart.CFrame = root.CFrame * CFrame.new(0, 0.5, -2.5) * CFrame.Angles(math.rad(45), 0, 0)
-			slashPart.Material = Enum.Material.Neon
-			slashPart.Color = mainColor
-			slashPart.CanCollide = false
-			slashPart.Anchored = true
-			slashPart.Parent = Workspace
-
-			-- Schimmer-Trail-Part (breiterer Lichtbogen)
-			local trailAtt0 = Instance.new("Attachment")
-			trailAtt0.Position = Vector3.new(0, 2.4, 0)
-			trailAtt0.Parent = slashPart
-			local trailAtt1 = Instance.new("Attachment")
-			trailAtt1.Position = Vector3.new(0, -2.4, 0)
-			trailAtt1.Parent = slashPart
-			local trail = Instance.new("Trail")
-			trail.Attachment0 = trailAtt0
-			trail.Attachment1 = trailAtt1
-			trail.Lifetime = 0.18
-			trail.MinLength = 0
-			trail.Color = ColorSequence.new{
-				ColorSequenceKeypoint.new(0, mainColor),
-				ColorSequenceKeypoint.new(1, secColor),
-			}
-			trail.Transparency = NumberSequence.new{ NumberSequenceKeypoint.new(0, 0.0), NumberSequenceKeypoint.new(1, 1.0) }
-			trail.WidthScale = NumberSequence.new(1)
-			trail.Parent = slashPart
-
-			-- Sweep-Animation (von links oben nach rechts unten)
-			local sweepTween = TweenService:Create(
-				slashPart,
-				TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-				{ CFrame = root.CFrame * CFrame.new(1.5, -0.3, -2.8) * CFrame.Angles(math.rad(-30), math.rad(35), 0) }
-			)
-			sweepTween:Play()
-			sweepTween.Completed:Connect(function()
-				local fadeTween = TweenService:Create(
-					slashPart,
-					TweenInfo.new(0.12),
-					{ Transparency = 1 }
-				)
-				fadeTween:Play()
-				fadeTween.Completed:Connect(function()
-					slashPart:Destroy()
-				end)
-			end)
-		end
+	local root = char:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not root then
+		return
 	end
+
+	local itemInfo = ItemConfig[equippedWeaponId]
+	local mainColor = if itemInfo and itemInfo.TrailColor then itemInfo.TrailColor else Color3.fromRGB(255, 220, 60)
+	local secColor = if itemInfo and itemInfo.TrailSecondaryColor then itemInfo.TrailSecondaryColor else Color3.fromRGB(255, 160, 0)
+
+	local inFP = isFirstPerson()
+	local slashPart = Instance.new("Part")
+	slashPart.Name = "SlashTrail"
+	slashPart.Material = Enum.Material.Neon
+	slashPart.Color = mainColor
+	slashPart.Transparency = 1 -- Vollständig unsichtbar, damit kein Neon-Klotz im Sichtfeld clippt!
+	slashPart.CanCollide = false
+	slashPart.CastShadow = false
+	slashPart.Anchored = true
+
+	local startCF: CFrame
+	local endCF: CFrame
+	local halfHeight: number
+
+	if inFP and Camera then
+		-- In Egoperspektive: Folgt dynamisch der Blickrichtung der Kamera (inkl. Auf-/Absehen!)
+		halfHeight = 1.2
+		slashPart.Size = Vector3.new(0.05, halfHeight * 2, 0.05)
+		startCF = Camera.CFrame * CFrame.new(0.55, 0.25, -1.9) * CFrame.Angles(math.rad(28), math.rad(-15), math.rad(35))
+		endCF = Camera.CFrame * CFrame.new(-0.65, -0.35, -1.9) * CFrame.Angles(math.rad(-22), math.rad(20), math.rad(-40))
+	else
+		-- In Third-Person: Ausrichtung am HumanoidRootPart
+		halfHeight = 2.4
+		slashPart.Size = Vector3.new(0.1, halfHeight * 2, 0.1)
+		startCF = root.CFrame * CFrame.new(-0.2, 0.5, -2.5) * CFrame.Angles(math.rad(45), 0, 0)
+		endCF = root.CFrame * CFrame.new(1.5, -0.3, -2.8) * CFrame.Angles(math.rad(-30), math.rad(35), 0)
+	end
+
+	slashPart.CFrame = startCF
+	slashPart.Parent = Workspace
+
+	-- Schimmer-Trail-Part (eleganter Lichtbogen)
+	local trailAtt0 = Instance.new("Attachment")
+	trailAtt0.Position = Vector3.new(0, halfHeight, 0)
+	trailAtt0.Parent = slashPart
+	local trailAtt1 = Instance.new("Attachment")
+	trailAtt1.Position = Vector3.new(0, -halfHeight, 0)
+	trailAtt1.Parent = slashPart
+
+	local trail = Instance.new("Trail")
+	trail.Attachment0 = trailAtt0
+	trail.Attachment1 = trailAtt1
+	trail.Lifetime = if inFP then 0.15 else 0.18
+	trail.MinLength = 0
+	trail.Color = ColorSequence.new{
+		ColorSequenceKeypoint.new(0, mainColor),
+		ColorSequenceKeypoint.new(1, secColor),
+	}
+	trail.Transparency = NumberSequence.new{ NumberSequenceKeypoint.new(0, 0.0), NumberSequenceKeypoint.new(1, 1.0) }
+	trail.WidthScale = NumberSequence.new(1)
+	trail.Parent = slashPart
+
+	-- Sweep-Animation
+	local sweepDuration = if inFP then 0.15 else 0.18
+	local sweepTween = TweenService:Create(
+		slashPart,
+		TweenInfo.new(sweepDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ CFrame = endCF }
+	)
+	sweepTween:Play()
+	sweepTween.Completed:Connect(function()
+		task.delay(0.08, function()
+			slashPart:Destroy()
+		end)
+	end)
 end
 
--- Spielt Screenshake bei telegrafiertem Boss-Angriff
+-- Spielt Screenshake bei telegrafiertem Boss-Angriff (über Humanoid.CameraOffset)
 local function playWarningShake()
-	if not Camera then
+	local char = LocalPlayer.Character
+	local hum = if char then char:FindFirstChildOfClass("Humanoid") else nil
+	if not hum or hum.Health <= 0 then
 		return
 	end
 
 	task.spawn(function()
 		for _ = 1, 6 do
-			local offset = Vector3.new(
-				(math.random() - 0.5) * 0.4,
-				(math.random() - 0.5) * 0.4,
+			hum.CameraOffset = Vector3.new(
+				(math.random() - 0.5) * 0.35,
+				(math.random() - 0.5) * 0.35,
 				0
 			)
-			Camera.CFrame = Camera.CFrame + offset
 			task.wait(0.03)
 		end
+		hum.CameraOffset = Vector3.zero
 	end)
 end
 
@@ -138,16 +182,22 @@ local function spawnBlueDashVFX()
 	local root = char:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not root then return end
 
-	-- Erstelle 8 schnelle Nachleucht-Partikel in Cyan/Blau hinter dem Spieler
-	for step = 0, 7 do
+	-- In First-Person keine Ghost-Parts auf Kopfhöhe spawnen, um Sicht nicht zu verdecken!
+	local inFP = isFirstPerson()
+	local startStep = if inFP then 2 else 0
+
+	-- Erstelle Nachleucht-Partikel in Cyan/Blau hinter dem Spieler
+	for step = startStep, 7 do
 		task.delay(step * 0.025, function()
 			if not char:IsDescendantOf(Workspace) then return end
 			local ghostPart = Instance.new("Part")
-			ghostPart.Size = Vector3.new(1.8, 3.0, 1.2)
-			ghostPart.CFrame = root.CFrame * CFrame.new(0, 0.2, step * 0.4)
+			ghostPart.Size = if inFP then Vector3.new(1.4, 2.0, 1.0) else Vector3.new(1.8, 3.0, 1.2)
+			local yOffset = if inFP then -0.5 else 0.2
+			local zDist = if inFP then (step + 1) * 0.8 else step * 0.4
+			ghostPart.CFrame = root.CFrame * CFrame.new(0, yOffset, zDist)
 			ghostPart.Material = Enum.Material.Neon
 			ghostPart.Color = if step < 4 then Color3.fromRGB(0, 200, 255) else Color3.fromRGB(0, 130, 255)
-			ghostPart.Transparency = 0.3 + step * 0.09
+			ghostPart.Transparency = 0.35 + step * 0.09
 			ghostPart.CanCollide = false
 			ghostPart.Anchored = true
 			ghostPart.CastShadow = false
@@ -203,7 +253,7 @@ local function executeDash()
 	lastDashTime = now
 
 	-- Richtung: Blick-Richtung der Kamera (flach, Y=0)
-	local camLook = Camera.CFrame.LookVector
+	local camLook = if Camera then Camera.CFrame.LookVector else root.CFrame.LookVector
 	local dashDir = Vector3.new(camLook.X, 0, camLook.Z).Unit
 
 	-- Kurzer BodyVelocity-Schubs
@@ -214,11 +264,12 @@ local function executeDash()
 
 	spawnBlueDashVFX()
 
-	-- FOV-Blur-Effekt
+	-- FOV-Blur-Effekt (respektiert vorheriges FOV wie z.B. Sprinten)
 	if Camera then
-		TweenService:Create(Camera, TweenInfo.new(0.06), { FieldOfView = 95 }):Play()
+		local origFOV = Camera.FieldOfView
+		TweenService:Create(Camera, TweenInfo.new(0.06), { FieldOfView = math.min(105, origFOV + 18) }):Play()
 		task.delay(0.18, function()
-			TweenService:Create(Camera, TweenInfo.new(0.22), { FieldOfView = 70 }):Play()
+			TweenService:Create(Camera, TweenInfo.new(0.22), { FieldOfView = origFOV }):Play()
 		end)
 	end
 
@@ -314,18 +365,22 @@ local function showGoldCelebration(goldAmount: number)
 		sg:Destroy()
 	end)
 
-	-- Kamera-Schütteln beim Boss-Kill
-	task.spawn(function()
-		for _ = 1, 8 do
-			local offset = Vector3.new(
-				(math.random() - 0.5) * 0.55,
-				(math.random() - 0.5) * 0.55,
-				0
-			)
-			Camera.CFrame = Camera.CFrame + offset
-			task.wait(0.04)
-		end
-	end)
+	-- Kamera-Schütteln beim Boss-Kill über Humanoid.CameraOffset
+	local char = LocalPlayer.Character
+	local hum = if char then char:FindFirstChildOfClass("Humanoid") else nil
+	if hum and hum.Health > 0 then
+		task.spawn(function()
+			for _ = 1, 8 do
+				hum.CameraOffset = Vector3.new(
+					(math.random() - 0.5) * 0.45,
+					(math.random() - 0.5) * 0.45,
+					0
+				)
+				task.wait(0.04)
+			end
+			hum.CameraOffset = Vector3.zero
+		end)
+	end
 end
 
 -- Verarbeitet Eingaben
@@ -338,6 +393,22 @@ local function onInputBegan(input: InputObject, gameProcessed: boolean)
 	if input.UserInputType == Enum.UserInputType.MouseButton1
 		or input.UserInputType == Enum.UserInputType.Touch
 		or input.KeyCode == Enum.KeyCode.F then
+
+		-- Kein Angriff, wenn Menüs offen sind (z.B. Shop oder Inventar)
+		local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+		if playerGui then
+			local rrUI = playerGui:FindFirstChild("RealmRaidersUI")
+			if rrUI then
+				local shopWin = rrUI:FindFirstChild("BlacksmithShopWindow")
+				if shopWin and shopWin.Visible then
+					return
+				end
+				local invModal = rrUI:FindFirstChild("InventoryModal")
+				if invModal and invModal.Visible then
+					return
+				end
+			end
+		end
 
 		local now = os.clock()
 		if now - lastAttackTime < currentAttackCooldown then

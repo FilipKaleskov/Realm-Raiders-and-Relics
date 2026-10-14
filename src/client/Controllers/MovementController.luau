@@ -204,16 +204,19 @@ local function showBaseIntrudedBanner()
 			TweenService:Create(burst, TweenInfo.new(0.08), { BackgroundColor3 = Color3.fromRGB(200, 22, 22) }):Play()
 		end
 
-		-- Kamera-Schütteln (Sirenen-Effekt)
-		for _ = 1, 5 do
-			if Camera then
-				Camera.CFrame = Camera.CFrame + Vector3.new(
+		-- Kamera-Schütteln (Sirenen-Effekt über Humanoid.CameraOffset)
+		local char = LocalPlayer.Character
+		local hum = if char then char:FindFirstChildOfClass("Humanoid") else nil
+		if hum and hum.Health > 0 then
+			for _ = 1, 5 do
+				hum.CameraOffset = Vector3.new(
 					(math.random() - 0.5) * 0.35,
 					(math.random() - 0.5) * 0.35,
 					0
 				)
+				task.wait(0.04)
 			end
-			task.wait(0.04)
+			hum.CameraOffset = Vector3.zero
 		end
 
 		task.wait(2.0)

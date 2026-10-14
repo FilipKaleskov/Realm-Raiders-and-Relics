@@ -189,12 +189,13 @@ local function attachCarrierVisuals(player: Player, coreId: string)
 	highlight.FillTransparency = 0.55
 	highlight.Parent = char
 
-	-- 5. Overhead-Warnung
+	-- 5. Overhead-Warnung (für andere Spieler; vor dem Dieb selbst verborgen, damit es nicht im Egoperspektiven-Sichtfeld schwebt)
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "TheftBillboard"
 	billboard.Size = UDim2.new(0, 180, 0, 44)
 	billboard.StudsOffset = Vector3.new(0, 5.0, 0)
 	billboard.AlwaysOnTop = true
+	billboard.PlayerToHideFrom = player
 	billboard.Parent = root
 
 	local label = Instance.new("TextLabel")

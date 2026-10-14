@@ -1076,6 +1076,11 @@ function HUDController.ToggleInventory()
 	end
 end
 
+-- Gibt zurück, ob das Inventar geöffnet ist
+function HUDController.IsInventoryOpen(): boolean
+	return isInventoryOpen
+end
+
 -- ==========================================
 -- HUD ERSTELLUNG & LAYOUT
 -- ==========================================

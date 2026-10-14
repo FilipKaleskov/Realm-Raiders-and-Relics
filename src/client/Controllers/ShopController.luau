@@ -51,6 +51,7 @@ local cachedBaseData: any = {
 
 -- UI Instanzen
 local shopGui: ScreenGui? = nil
+local shopBackdrop: TextButton? = nil
 local shopWindow: Frame? = nil
 local windowScale: UIScale? = nil
 local contentScroll: ScrollingFrame? = nil
@@ -63,15 +64,20 @@ function ShopController.CloseShop()
 		return
 	end
 
+	if shopBackdrop then
+		shopBackdrop.Modal = false
+		shopBackdrop.Visible = false
+	end
+
 	if windowScale then
 		local closeTween = TweenService:Create(
 			windowScale,
-			TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.In),
-			{ Scale = 0.85 }
+			TweenInfo.new(0.14, Enum.EasingStyle.Back, Enum.EasingDirection.In),
+			{ Scale = CheckUIController.getDeviceScale() * 0.70 }
 		)
 		closeTween:Play()
 		closeTween.Completed:Connect(function()
-			if shopWindow then
+			if not (shopBackdrop and shopBackdrop.Visible) and shopWindow then
 				shopWindow.Visible = false
 			end
 		end)
@@ -589,17 +595,31 @@ function ShopController.OpenShop(initialTab: string?)
 	end
 
 	setTab(currentTab)
+
+	-- 1. Modal aktivieren & Maus in Egoperspektive / First-Person freigeben!
+	if shopBackdrop then
+		shopBackdrop.Modal = true
+		shopBackdrop.Visible = true
+	end
+
 	shopWindow.Visible = true
+	UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 
 	if windowScale then
-		windowScale.Scale = 0.8
+		local targetScale = CheckUIController.getDeviceScale()
+		windowScale.Scale = targetScale * 0.75
 		local openTween = TweenService:Create(
 			windowScale,
-			TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-			{ Scale = CheckUIController.getDeviceScale() }
+			TweenInfo.new(0.24, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+			{ Scale = targetScale }
 		)
 		openTween:Play()
 	end
+end
+
+-- Prüft, ob der Shop geöffnet ist
+function ShopController.IsOpen(): boolean
+	return shopWindow ~= nil and shopWindow.Visible
 end
 
 -- Schaltet das Shop-Fenster um
@@ -622,6 +642,23 @@ local function createShopUI()
 		screenGui.Parent = PlayerGui
 	end
 	shopGui = screenGui
+
+	-- 0. Modaler Backdrop (Gibt in der Egoperspektive die Maus frei & schließt Shop bei Klick außerhalb)
+	local backdrop = Instance.new("TextButton")
+	backdrop.Name = "ShopBackdrop"
+	backdrop.Size = UDim2.new(1, 0, 1, 0)
+	backdrop.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	backdrop.BackgroundTransparency = 0.55
+	backdrop.Text = ""
+	backdrop.Modal = true -- WICHTIG: Gibt in der First-Person die Maus frei!
+	backdrop.Visible = false
+	backdrop.ZIndex = 25
+	backdrop.Parent = screenGui
+	shopBackdrop = backdrop
+
+	backdrop.MouseButton1Click:Connect(function()
+		ShopController.CloseShop()
+	end)
 
 	-- 1. Modales Hauptfenster
 	local window = CheckUIComponents.createWindow({

@@ -853,14 +853,14 @@ local function setupAttackHandler()
 		local isCrit = math.random() < CRIT_CHANCE
 		local damage = if isCrit then math.max(1, math.floor(weaponDamage * CRIT_MULTIPLIER + 0.5)) else weaponDamage
 
-		-- 1. Prüfe auf Boss in Reichweite (Arena, großzügiger Trefferradius von 30 Studs)
+		-- 1. Prüfe auf Boss in Reichweite (Nahkampf: man muss dicht herangehen, Trefferradius 14 Studs)
 		local hitBoss = false
 		if isBossAlive and currentBossModel and currentBossHumanoid and currentBossHumanoid.Health > 0 then
 			local bossRoot = currentBossModel.PrimaryPart
 			if bossRoot then
 				local flatDist = (Vector2.new(root.Position.X, root.Position.Z) - Vector2.new(bossRoot.Position.X, bossRoot.Position.Z)).Magnitude
 				local dy = math.abs(root.Position.Y - bossRoot.Position.Y)
-				if flatDist <= 30 and dy <= 28 then
+				if flatDist <= 14 and dy <= 28 then
 					hitBoss = true
 					currentBossHumanoid:TakeDamage(damage)
 

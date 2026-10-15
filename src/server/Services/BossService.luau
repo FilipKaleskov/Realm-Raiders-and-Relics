@@ -16,18 +16,34 @@ local ItemConfig = require(ItemConfigModule)
 local AudioConfigModule = ConfigFolder:WaitForChild("AudioConfig") :: ModuleScript
 local AudioConfig = require(AudioConfigModule)
 
-local EventsFolder = Shared:WaitForChild("Events")
-
 local Server = ServerScriptService:WaitForChild("Server")
 local Services = Server:WaitForChild("Services")
 local DataManagerModule = Services:WaitForChild("DataManager") :: ModuleScript
 local DataManager = require(DataManagerModule)
 
--- RemoteEvents initialisieren
+-- RemoteEvents: fehlende Events werden sofort selbst erzeugt statt auf sie zu warten.
+-- Wichtig für den Studio-Bau-Modus (dort laufen keine Skripte -> :WaitForChild() würde ewig hängen).
+local function getEventsFolder(): Folder
+	local events = Shared:FindFirstChild("Events")
+	if events and events:IsA("Folder") then
+		return events
+	end
+	if events then
+		events:Destroy()
+	end
+	local newEvents = Instance.new("Folder")
+	newEvents.Name = "Events"
+	newEvents.Parent = Shared
+	return newEvents
+end
+
 local function getOrCreateRemoteEvent(parent: Instance, name: string): RemoteEvent
 	local existing = parent:FindFirstChild(name)
 	if existing and existing:IsA("RemoteEvent") then
 		return existing
+	end
+	if existing then
+		existing:Destroy()
 	end
 	local newRemote = Instance.new("RemoteEvent")
 	newRemote.Name = name
@@ -35,9 +51,12 @@ local function getOrCreateRemoteEvent(parent: Instance, name: string): RemoteEve
 	return newRemote
 end
 
+local EventsFolder = getEventsFolder()
+
 local AttackIntentEvent = getOrCreateRemoteEvent(EventsFolder, "AttackIntent")
 local BossUpdatedEvent = getOrCreateRemoteEvent(EventsFolder, "BossUpdated")
 local BossTelegraphEvent = getOrCreateRemoteEvent(EventsFolder, "BossTelegraphStarted")
+local CameraShakeTriggerEvent = getOrCreateRemoteEvent(EventsFolder, "CameraShakeTrigger")
 local NotificationEvent = getOrCreateRemoteEvent(EventsFolder, "ShowNotification")
 local GoldUpdatedEvent = getOrCreateRemoteEvent(EventsFolder, "GoldUpdated")
 local BossDefeatedEvent = getOrCreateRemoteEvent(EventsFolder, "BossDefeated")
@@ -50,6 +69,21 @@ local BossService = {}
 local CRIT_CHANCE = 0.2 -- 20% Chance auf einen kritischen Treffer
 local CRIT_MULTIPLIER = 1.75 -- Kritischer Treffer verursacht 1.75x Schaden
 local DAMAGE_FEEDBACK_RADIUS = 250 -- Nur Spieler in diesem Umkreis erhalten Schadens-Feedback (Zahlen, Funken, Sounds)
+
+-- Bodenschlag-Wucht (Knockback) & Camera-Shake (Phase 4: Game Feel)
+local KNOCKBACK_HORIZONTAL_FORCE = 65 -- Horizontale Fluchtgeschwindigkeit weg vom Einschlagszentrum (Studs/s)
+local KNOCKBACK_VERTICAL_FORCE = 32 -- Vertikaler Auftrieb beim Bodenschlag (Studs/s)
+local SLAM_CAMERA_SHAKE_INTENSITY = 0.85 -- Maximale Auslenkung des Camera-Shake (Studs)
+local SLAM_CAMERA_SHAKE_DURATION = 0.45 -- Abklingzeit des Camera-Shake (Sekunden)
+
+-- Wut-Phase (Enrage): Optik & Audio
+local ENRAGE_ROAR_PITCH = 0.78 -- Deutlich tieferer Wutschrei (PlaybackSpeed)
+local EYE_COLOR_NORMAL = Color3.fromRGB(255, 230, 40)
+local EYE_COLOR_ENRAGED = Color3.fromRGB(255, 30, 30)
+local EYE_LIGHT_COLOR_NORMAL = Color3.fromRGB(255, 220, 0)
+local EYE_LIGHT_COLOR_ENRAGED = Color3.fromRGB(255, 40, 40)
+local EYE_LIGHT_BRIGHTNESS_NORMAL = 2.5
+local EYE_LIGHT_BRIGHTNESS_ENRAGED = 4.0
 
 local ARENA_CENTER = Vector3.new(0, 500, 25000)
 local ARENA_RADIUS = 60
@@ -68,6 +102,7 @@ local isBossAttacking = false
 local isBossDying = false
 local isInitialized = false
 local lastBossAttackTime = 0
+local isBossEnraged = false -- Wut-Phase aktiv? (unter 35% MaxHealth)
 
 local playerAttackCooldowns: { [Player]: number } = {}
 
@@ -216,6 +251,134 @@ local function updateBossHealthUI(health: number, maxHealth: number)
 	BossUpdatedEvent:FireAllClients("Wald-Golem", health, maxHealth, isBossAlive)
 end
 
+-- ==========================================================
+-- WUT-PHASE (ENRAGE) — ab < 35% MaxHealth wechselt der Wald-Golem in den Wut-Modus
+-- ==========================================================
+
+-- Färbt beide Augen & deren Lichter passend zum Zustand (Gelb = normal, Leuchtrot = Wut)
+local function applyBossEyeState(enraged: boolean)
+	local model = currentBossModel
+	if not model then
+		return
+	end
+
+	local eyeColor = if enraged then EYE_COLOR_ENRAGED else EYE_COLOR_NORMAL
+	local lightColor = if enraged then EYE_LIGHT_COLOR_ENRAGED else EYE_LIGHT_COLOR_NORMAL
+	local lightBrightness = if enraged then EYE_LIGHT_BRIGHTNESS_ENRAGED else EYE_LIGHT_BRIGHTNESS_NORMAL
+
+	for _, eyeName in { "EyeL", "EyeR" } do
+		local eye = model:FindFirstChild(eyeName) :: BasePart?
+		if eye then
+			eye.Color = eyeColor
+			local light = eye:FindFirstChildOfClass("PointLight")
+			if light then
+				light.Color = lightColor
+				light.Brightness = lightBrightness
+			end
+		end
+	end
+end
+
+-- Kurzer roter Partikel-Ausstoß + Schockwellen-Ring als Phasensprung-Signal
+local function playEnrageBurst()
+	local model = currentBossModel
+	if not model then
+		return
+	end
+
+	local core = model:FindFirstChild("Core") :: BasePart?
+	local head = model:FindFirstChild("Head") :: BasePart?
+	local effectAnchor = core or head
+	if not effectAnchor then
+		return
+	end
+
+	-- Roter Partikel-Ausstoß aus dem Brustkern
+	local attachment = Instance.new("Attachment")
+	attachment.Parent = effectAnchor
+
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Rate = 0
+	emitter.Lifetime = NumberRange.new(0.5, 0.9)
+	emitter.Speed = NumberRange.new(16, 30)
+	emitter.SpreadAngle = Vector2.new(180, 180)
+	emitter.Size = NumberSequence.new{ NumberSequenceKeypoint.new(0, 0.9), NumberSequenceKeypoint.new(1, 0) }
+	emitter.Color = ColorSequence.new(EYE_COLOR_ENRAGED)
+	emitter.LightEmission = 1
+	emitter.Parent = attachment
+	emitter:Emit(48)
+
+	-- Partikel leben < 1s -> Anker nach 2s restlos entfernen (Memory-Cleanup)
+	Debris:AddItem(attachment, 2)
+
+	-- Roter, expandierender Schockwellen-Ring am Boden
+	local shockwave = Instance.new("Part")
+	shockwave.Name = "EnrageShockwave"
+	shockwave.Shape = Enum.PartType.Ball
+	shockwave.Size = Vector3.new(2, 2, 2)
+	shockwave.Position = Vector3.new(effectAnchor.Position.X, ARENA_CENTER.Y + 2.0, effectAnchor.Position.Z)
+	shockwave.Color = EYE_COLOR_ENRAGED
+	shockwave.Material = Enum.Material.Neon
+	shockwave.Transparency = 0.15
+	shockwave.CanCollide = false
+	shockwave.CanQuery = false
+	shockwave.CanTouch = false
+	shockwave.CastShadow = false
+	shockwave.Anchored = true
+	shockwave.Parent = Workspace
+
+	TweenService:Create(
+		shockwave,
+		TweenInfo.new(0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Size = Vector3.new(26, 4, 26), Transparency = 1 }
+	):Play()
+	Debris:AddItem(shockwave, 0.6)
+end
+
+-- Aktiviert die Wut-Phase: rote Augen, tiefer Wutschrei, VFX & Arena-Warnung
+local function activateBossEnrage()
+	if isBossEnraged or not isBossAlive then
+		return
+	end
+
+	-- Boss-Modell als Const-Local greifen (stabile Typverfeinerung über Funktionsaufrufe hinweg)
+	local model = currentBossModel
+	if not model then
+		return
+	end
+
+	isBossEnraged = true
+	print("[BossService] 🔥 WUT-PHASE! Der Wald-Golem tobt (unter 35% MaxHealth).")
+
+	applyBossEyeState(true)
+	playEnrageBurst()
+
+	-- Tiefer Wutschrei (PlaybackSpeed 0.78 = deutlich bedrohlicher als das Erwachen)
+	local head = model:FindFirstChild("Head") :: BasePart?
+	if head then
+		local enrageRoar = AudioConfig.PlayTag("BossRoar", head)
+		enrageRoar.PlaybackSpeed = ENRAGE_ROAR_PITCH
+	end
+
+	-- Arena-Warnung an alle Spieler im Umfeld
+	for _, player in Players:GetPlayers() do
+		local char = player.Character
+		local root = if char then char:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
+		if root and (root.Position - ARENA_CENTER).Magnitude <= (ARENA_RADIUS + 25) then
+			NotificationEvent:FireClient(player, "🔥 Der Wald-Golem tobt! WUT-PHASE (< 35% HP)", true)
+		end
+	end
+end
+
+-- Setzt Wut-Phase & Augenfarben wieder auf den Normalzustand zurück (Boss-Tod, Despawn oder neuer Spawn)
+local function resetBossEnrage()
+	if not isBossEnraged then
+		return
+	end
+	isBossEnraged = false
+	applyBossEyeState(false)
+end
+
 -- Erstellt das Golem-Modell und den Overhead-Health-Balken (Pitch-Video-Fidelity)
 local function spawnGolemModel(): Model
 	local model = Instance.new("Model")
@@ -258,18 +421,18 @@ local function spawnGolemModel(): Model
 	local cheekR = createPart(model, "CheekR", Vector3.new(1.8, 1.4, 1.4), ARENA_CENTER + Vector3.new(2.6, 19.1, -1.5), Color3.fromRGB(65, 70, 62), Enum.Material.Cobblestone, false)
 
 	-- LEUCHTEND GELBE AUGEN (wie im Pitch-Video!)
-	local eyeL = createPart(model, "EyeL", Vector3.new(1.1, 0.9, 0.7), ARENA_CENTER + Vector3.new(-1.5, 19.9, -2.6), Color3.fromRGB(255, 235, 40), Enum.Material.Neon, false)
-	local eyeR = createPart(model, "EyeR", Vector3.new(1.1, 0.9, 0.7), ARENA_CENTER + Vector3.new(1.5, 19.9, -2.6), Color3.fromRGB(255, 235, 40), Enum.Material.Neon, false)
+	local eyeL = createPart(model, "EyeL", Vector3.new(1.1, 0.9, 0.7), ARENA_CENTER + Vector3.new(-1.5, 19.9, -2.6), EYE_COLOR_NORMAL, Enum.Material.Neon, false)
+	local eyeR = createPart(model, "EyeR", Vector3.new(1.1, 0.9, 0.7), ARENA_CENTER + Vector3.new(1.5, 19.9, -2.6), EYE_COLOR_NORMAL, Enum.Material.Neon, false)
 	-- Gelbe Augenlicht-Emitter
 	local eyeLLight = Instance.new("PointLight")
-	eyeLLight.Color = Color3.fromRGB(255, 220, 0)
+	eyeLLight.Color = EYE_LIGHT_COLOR_NORMAL
 	eyeLLight.Range = 20
-	eyeLLight.Brightness = 2.5
+	eyeLLight.Brightness = EYE_LIGHT_BRIGHTNESS_NORMAL
 	eyeLLight.Parent = eyeL
 	local eyeRLight = Instance.new("PointLight")
-	eyeRLight.Color = Color3.fromRGB(255, 220, 0)
+	eyeRLight.Color = EYE_LIGHT_COLOR_NORMAL
 	eyeRLight.Range = 20
-	eyeRLight.Brightness = 2.5
+	eyeRLight.Brightness = EYE_LIGHT_BRIGHTNESS_NORMAL
 	eyeRLight.Parent = eyeR
 
 	-- FELSEN-ZÄHNE / STOSSZÄHNE am Maul
@@ -443,6 +606,16 @@ local function spawnGolemModel(): Model
 	currentBossHumanoid = humanoid
 	isBossAlive = true
 	isBossDying = false
+	isBossEnraged = false -- Jeder neue Spawn startet im Normalzustand (Augen Gelb, Basis-Stats)
+
+	-- Wut-Phase-Auslöser: Unterschreitet der Golem den HP-Schwellwert (35% MaxHealth = 315 HP), tobt er!
+	local enrageInfo = BossConfig.ForestGolemCore.Enrage
+	local healthThreshold = if enrageInfo then enrageInfo.HealthThreshold else 0.35
+	humanoid.HealthChanged:Connect(function(newHealth: number)
+		if newHealth > 0 and not isBossEnraged and newHealth <= humanoid.MaxHealth * healthThreshold then
+			activateBossEnrage()
+		end
+	end)
 
 	-- Tiefes Monsterbrüllen beim Erwachen des Wald-Golems (3D mit Distanzdämpfung)
 	AudioConfig.PlayTag("BossRoar", head)
@@ -471,6 +644,9 @@ end
 
 -- Despawnt das Boss-Modell sauber (z. B. wenn alle Spieler die Arena verlassen)
 local function despawnGolem()
+	-- Wut-Phase zurücksetzen, solange das Modell noch existiert (Augen zurück auf Gelb)
+	resetBossEnrage()
+
 	if currentBossMover then
 		currentBossMover:Destroy()
 		currentBossMover = nil
@@ -525,6 +701,7 @@ local function handleBossDefeated(killer: Player?)
 	end
 	isBossAlive = false
 	isBossDying = true
+	resetBossEnrage() -- Wut-Phase beenden (Augen zurück auf Gelb, bevor der Golem einstürzt)
 
 	print("[BossService] Wald-Golem besiegt!")
 
@@ -606,7 +783,10 @@ local function executeTelegraphedAttack(targetPos: Vector3)
 
 	local config = BossConfig.ForestGolemCore
 	local radius = config.TelegraphRadius
-	local duration = config.TelegraphDuration
+
+	-- In der Wut-Phase ist das Ausweichfenster deutlich kürzer (punktgenauer Dash nötig)
+	local enrageInfo = config.Enrage
+	local duration = if isBossEnraged and enrageInfo then enrageInfo.TelegraphDuration else config.TelegraphDuration
 
 	-- 1. Rote Indikator-Fläche am Boden erzeugen (sauber über der Bodenplatte bei Y = 501.58 platziert)
 	local indicatorY = ARENA_CENTER.Y + 1.58
@@ -688,6 +868,20 @@ local function executeTelegraphedAttack(targetPos: Vector3)
 					-- Eingesteckter Schaden: Alarmierend rote Schadenszahl über dem Getroffenen
 					broadcastDamageFeedback(root.Position, config.AttackDamage, false, "Player", player)
 					NotificationEvent:FireClient(player, string.format("💥 Vom Bodenschlag getroffen! (-%d HP)", config.AttackDamage), true)
+
+					-- Wucht: horizontal weg vom Einschlagszentrum + vertikaler Auftrieb (server-autoritär)
+					local toHit = Vector2.new(root.Position.X, root.Position.Z) - Vector2.new(targetPos.X, targetPos.Z)
+					-- Fallback verhindert NaN-Impulse, falls der Spieler exakt im Zentrum steht
+					local knockbackDir = if toHit.Magnitude > 0.05 then toHit.Unit else Vector2.new(0, 1)
+					local impulseVector = Vector3.new(
+						knockbackDir.X * KNOCKBACK_HORIZONTAL_FORCE,
+						KNOCKBACK_VERTICAL_FORCE,
+						knockbackDir.Y * KNOCKBACK_HORIZONTAL_FORCE
+					)
+					root:ApplyImpulse(impulseVector * root.AssemblyMass)
+
+					-- Intensiver Camera-Shake beim getroffenen Client
+					CameraShakeTriggerEvent:FireClient(player, SLAM_CAMERA_SHAKE_INTENSITY, SLAM_CAMERA_SHAKE_DURATION)
 				end
 			end
 		end
@@ -755,7 +949,11 @@ local function startBossAILoop()
 
 			if closestPlayer and closestTargetRoot then
 				local now = os.clock()
-				local attackCooldown = BossConfig.ForestGolemCore.AttackCooldown
+				local config = BossConfig.ForestGolemCore
+				local enrageInfo = config.Enrage
+
+				-- Wut-Phase: deutlich kürzerer Bodenschlag-Cooldown (2.4s statt 3.2s)
+				local attackCooldown = if isBossEnraged and enrageInfo then enrageInfo.AttackCooldown else config.AttackCooldown
 				local canAttack = (now - lastBossAttackTime) >= attackCooldown
 
 				local toPlayer = Vector3.new(closestTargetRoot.Position.X - bossRoot.Position.X, 0, closestTargetRoot.Position.Z - bossRoot.Position.Z)
@@ -772,9 +970,9 @@ local function startBossAILoop()
 					end
 					executeTelegraphedAttack(closestTargetRoot.Position)
 				else
-					-- Dem Spieler aktiv nähern
+					-- Dem Spieler aktiv nähern (in der Wut-Phase deutlich schneller: 14.5 statt 11 Studs/s)
 					if not isBossAttacking then
-						local speed = 11
+						local speed = if isBossEnraged and enrageInfo then enrageInfo.WalkSpeed else config.WalkSpeed
 						if flatDist > 5.5 then
 							local moveDir = toPlayer.Unit
 							if currentBossMover then
@@ -848,19 +1046,21 @@ local function setupAttackHandler()
 			else "RustySword"
 		local itemConfig = ItemConfig[weaponId]
 		local weaponDamage = if itemConfig and itemConfig.Damage then itemConfig.Damage else 25
+		-- Dynamische Waffenreichweite (z. B. Leeren-Sense = 18.5 Studs, Standard-Fallback = 14.0 Studs)
+		local maxReach = if itemConfig and itemConfig.Reach then itemConfig.Reach else 14.0
 
 		-- Kritischer Treffer (server-autoritär gewürfelt): 20% Chance auf 1.75x Schaden
 		local isCrit = math.random() < CRIT_CHANCE
 		local damage = if isCrit then math.max(1, math.floor(weaponDamage * CRIT_MULTIPLIER + 0.5)) else weaponDamage
 
-		-- 1. Prüfe auf Boss in Reichweite (Nahkampf: man muss dicht herangehen, Trefferradius 14 Studs)
+		-- 1. Prüfe auf Boss in Reichweite (Nahkampf: waffenabhängige Reichweite via maxReach)
 		local hitBoss = false
 		if isBossAlive and currentBossModel and currentBossHumanoid and currentBossHumanoid.Health > 0 then
 			local bossRoot = currentBossModel.PrimaryPart
 			if bossRoot then
 				local flatDist = (Vector2.new(root.Position.X, root.Position.Z) - Vector2.new(bossRoot.Position.X, bossRoot.Position.Z)).Magnitude
 				local dy = math.abs(root.Position.Y - bossRoot.Position.Y)
-				if flatDist <= 14 and dy <= 28 then
+				if flatDist <= maxReach and dy <= 28 then
 					hitBoss = true
 					currentBossHumanoid:TakeDamage(damage)
 
@@ -1032,15 +1232,22 @@ local function ensureArenaShrine()
 	end
 end
 
+-- Baut NUR die statische Boss-Arena auf (Boden, Ruinenmauern, Säulen, Wald-Deko & Schrein).
+-- Für die Studio-Befehlszeile: kein Boss-Spawn, keine KI-Loop, kein Kampf-Handler.
+function BossService.BuildArenaInStudio(): Folder
+	local arena = ensureArenaExists()
+	createArenaForestDecor(arena)
+	pcall(ensureArenaShrine)
+	return arena
+end
+
 function BossService.Init()
 	if isInitialized then
 		return
 	end
 	isInitialized = true
 
-	local arena = ensureArenaExists()
-	createArenaForestDecor(arena)
-	pcall(ensureArenaShrine)
+	BossService.BuildArenaInStudio()
 	setupAttackHandler()
 	startBossAILoop()
 
@@ -1049,7 +1256,7 @@ function BossService.Init()
 		playerAttackCooldowns[player] = nil
 	end)
 
-	print("[BossService] Wald-Golem initialisiert (Gelbe Augen, Moos, Zähne, Schrein, Waldbäume aktiv).")
+	print("[BossService] Wald-Golem initialisiert (900 HP, Telegraph 1.4s/15 Studs, Knockback & Wut-Phase ab <35% HP aktiv).")
 end
 
 return BossService

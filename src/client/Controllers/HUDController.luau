@@ -128,8 +128,8 @@ local cachedCPS = 0
 local currentDimensionName = "Oberwelt"
 local cachedBossData = {
 	Name = "Wald-Golem",
-	Health = 300,
-	MaxHealth = 300,
+	Health = 900,
+	MaxHealth = 900,
 	IsAlive = false,
 }
 
@@ -1183,7 +1183,7 @@ local function createHUD()
 	bTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
 	bTitle.Font = CheckUITheme.Typography.Font
 	bTitle.TextSize = 13
-	bTitle.Text = "👹 Wald-Golem: 300 / 300 HP"
+	bTitle.Text = "👹 Wald-Golem: 900 / 900 HP"
 	bTitle.ZIndex = 8
 	bTitle.Parent = bossFrame
 	addCheckUIStroke(bTitle, 2.4)

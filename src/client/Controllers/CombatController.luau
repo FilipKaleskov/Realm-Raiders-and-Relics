@@ -17,6 +17,7 @@ local BossTelegraph = EventsFolder:WaitForChild("BossTelegraphStarted") :: Remot
 local BossDefeated = EventsFolder:WaitForChild("BossDefeated") :: RemoteEvent
 local InventoryUpdated = EventsFolder:WaitForChild("InventoryUpdated") :: RemoteEvent
 local EntityDamaged = EventsFolder:WaitForChild("EntityDamaged") :: RemoteEvent
+local CameraShakeTrigger = EventsFolder:WaitForChild("CameraShakeTrigger") :: RemoteEvent
 
 local ConfigFolder = Shared:WaitForChild("Config")
 local ItemConfigModule = ConfigFolder:WaitForChild("ItemConfig") :: ModuleScript
@@ -205,6 +206,44 @@ local function playWarningShake()
 			task.wait(0.03)
 		end
 		hum.CameraOffset = Vector3.zero
+	end)
+end
+
+-- Intensiver, server-getriggerter Camera-Shake (z. B. erlittener Bodenschlag-Knockback).
+-- Randomisierte Offsets mit linearem Abfall über die Dauer, danach sauberer Reset über CameraOffset
+-- (funktioniert nahtlos in First-Person & Third-Person ohne CFrame-Reset).
+local function playIntenseCameraShake(intensity: number, duration: number)
+	local char = LocalPlayer.Character
+	local hum = if char then char:FindFirstChildOfClass("Humanoid") else nil
+	if not hum or hum.Health <= 0 then
+		return
+	end
+
+	task.spawn(function()
+		local startTime = os.clock()
+		while true do
+			-- Bei Tod/Respawn sofort aufhören (der Humanoid gehört dann zu einem alten Charakter)
+			if hum.Parent == nil or hum.Health <= 0 then
+				return
+			end
+
+			local remaining = duration - (os.clock() - startTime)
+			if remaining <= 0 then
+				break
+			end
+
+			local falloff = math.clamp(remaining / duration, 0, 1)
+			local amplitude = intensity * falloff
+			hum.CameraOffset = Vector3.new(
+				(math.random() - 0.5) * 2 * amplitude,
+				(math.random() - 0.5) * 2 * amplitude,
+				(math.random() - 0.5) * amplitude
+			)
+			task.wait(0.025)
+		end
+		if hum.Parent ~= nil and hum.Health > 0 then
+			hum.CameraOffset = Vector3.zero
+		end
 	end)
 end
 
@@ -734,6 +773,15 @@ function CombatController.Init()
 		playWarningShake()
 	end)
 
+	-- Server-getriggerter Bodenschlag-Knockback: intensiver Camera-Shake auf dem getroffenen Client.
+	-- (intensity = maximale Auslenkung in Studs, duration = Abklingzeit in Sekunden)
+	CameraShakeTrigger.OnClientEvent:Connect(function(intensity: number, duration: number)
+		if typeof(intensity) ~= "number" or typeof(duration) ~= "number" then
+			return
+		end
+		playIntenseCameraShake(intensity, duration)
+	end)
+
 	-- Boss-Sieg: Riesiges +Gold Celebration-Popup
 	BossDefeated.OnClientEvent:Connect(function(_coreId: string, goldAmount: number)
 		showGoldCelebration(goldAmount)
@@ -755,7 +803,7 @@ function CombatController.Init()
 		playHitFeedback(position, damage, isCrit == true, isLocalPlayerVictim == true, kind)
 	end)
 
-	print("[CombatController] Initialisiert: Nahkampf (Linksklick/F/Mobile-Touch-Button), Dash (Q/L2/Mobile-Touch-Button) mit FoV-Punch, Slash-Trail, Damage Numbers, Hit-Sparks & Sound-Juice aktiv.")
+	print("[CombatController] Initialisiert: Nahkampf (Linksklick/F/Mobile-Touch-Button), Dash (Q/L2/Mobile-Touch-Button) mit FoV-Punch, Slash-Trail, Damage Numbers, Hit-Sparks, Sound-Juice & Bodenschlag-Camera-Shake aktiv.")
 end
 
 return CombatController

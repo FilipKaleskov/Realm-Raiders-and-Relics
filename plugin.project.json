@@ -1,0 +1,6 @@
+{
+  "name": "Realm Welt-Builder (Studio Plugin)",
+  "tree": {
+    "$path": "plugin"
+  }
+}

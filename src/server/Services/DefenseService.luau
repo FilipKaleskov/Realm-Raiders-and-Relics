@@ -8,7 +8,6 @@ local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
-local EventsFolder = Shared:WaitForChild("Events")
 local ConfigFolder = Shared:WaitForChild("Config")
 
 local BossConfigModule = ConfigFolder:WaitForChild("BossConfig") :: ModuleScript
@@ -28,9 +27,41 @@ local function getBossService(): any
 	return BossService
 end
 
-local NotificationEvent = EventsFolder:WaitForChild("ShowNotification") :: RemoteEvent
-local GoldUpdatedEvent = EventsFolder:WaitForChild("GoldUpdated") :: RemoteEvent
-local GoldGainedEvent = EventsFolder:WaitForChild("GoldGained") :: RemoteEvent
+-- RemoteEvents: fehlende Events werden sofort selbst erzeugt statt auf sie zu warten.
+-- Wichtig für den Studio-Bau-Modus (dort laufen keine Skripte -> :WaitForChild() würde ewig hängen).
+local function getEventsFolder(): Folder
+	local events = Shared:FindFirstChild("Events")
+	if events and events:IsA("Folder") then
+		return events
+	end
+	if events then
+		events:Destroy()
+	end
+	local newEvents = Instance.new("Folder")
+	newEvents.Name = "Events"
+	newEvents.Parent = Shared
+	return newEvents
+end
+
+local function getOrCreateRemoteEvent(parent: Instance, name: string): RemoteEvent
+	local existing = parent:FindFirstChild(name)
+	if existing and existing:IsA("RemoteEvent") then
+		return existing
+	end
+	if existing then
+		existing:Destroy()
+	end
+	local newRemote = Instance.new("RemoteEvent")
+	newRemote.Name = name
+	newRemote.Parent = parent
+	return newRemote
+end
+
+local EventsFolder = getEventsFolder()
+
+local NotificationEvent = getOrCreateRemoteEvent(EventsFolder, "ShowNotification")
+local GoldUpdatedEvent = getOrCreateRemoteEvent(EventsFolder, "GoldUpdated")
+local GoldGainedEvent = getOrCreateRemoteEvent(EventsFolder, "GoldGained")
 
 local DefenseService = {}
 local isInitialized = false

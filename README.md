@@ -5,31 +5,81 @@
 
 ---
 
-## ⚡ Roblox Studio Quick Commands (Befehlszeile)
+## ⚡ Welt im Bau-Modus (Build Mode) sichtbar machen
 
-Füge diese Befehle unten in die **Befehlszeile (Command Bar)** in Roblox Studio ein und drücke **Enter**, um die Welt direkt im **gestoppten Zustand (Edit-Modus)** aufzubauen:
+> **Warum sieht man im Bau-Modus fast nichts?**
+> Die komplette Welt – Plots, schwebende Insel, Säuresee, Hängebrücke, Portale, Boss-Arena, Schmiede – wird von **Server-Skripten zur Laufzeit erzeugt** und steckt nicht als dauerhafte Objekte im Place-File. Im **Bau-Modus von Roblox Studio laufen aber keine Skripte**, deshalb ist die Workspace dort leer (man sieht nur Himmel und Void). Erst beim Spielen (Play-Modus) wird alles aufgebaut.
 
-### 🌌 Komplette Welt mit allen Features generieren (Hängebrücke + Plots mit **Schmelz-Altar**, **Stachelfallen**, **Wächter-Minions** + Portale + **Golem Facelift** + **Waldbäume** + **Sky-Beacons**):
+### 🧭 Schritt 1: Prüfen, ob der neue Code in Studio angekommen ist
+
+1. Im **Rojo-Plugin** auf *Connect / Sync* klicken.
+2. Im Explorer nachsehen: **`ServerScriptService → Server → Studio → WorldBuilder`** muss existieren.
+   *Fehlt dieser Ordner, ist der Sync nicht durchgelaufen – dann siehe „Plan B" weiter unten.*
+3. Beim Spielen steht im **Output** (Ansicht → Ausgabe) die Zeile `[Init] Welt-Check: ...` (bzw. beim Bauen `[WorldBuilder] ... Version 2026-10-15-b`). **Beide Versionen müssen identisch sein** – dann ist der Sync vollständig. Fehlt die Zeile `[Init] Welt-Check`, ist der Server-Start hängen geblieben (dann greift nach 20s der Watchdog und schreibt eine Warnung).
+
+### 🌌 Schritt 2: Komplette Welt im Bau-Modus aufbauen
+
+In Roblox Studio die **Befehlszeile (Command Bar)** öffnen (*Ansicht → Befehlszeile*), einfügen und **Enter** drücken:
+
 ```lua
-pcall(function() workspace.Baseplate:Destroy() end); pcall(function() workspace.Environment:Destroy() end); pcall(function() workspace.Plots:Destroy() end); require(game.ServerScriptService.Server.Services.EnvironmentService).Init(); require(game.ServerScriptService.Server.Services.PlotService).Init(); require(game.ServerScriptService.Server.Services.PortalService).Init(); require(game.ServerScriptService.Server.Services.BossService).Init(); require(game.ServerScriptService.Server.Services.DefenseService).Init()
+require(game.ServerScriptService.Server.Studio.WorldBuilder).BuildAll()
 ```
 
-### 🏰 Nur Plots & Verteidigungsanlagen aufbauen (**Schmelz-Altar**, **Stachelfallen**, **Wächter-Minions** & **Trophäenstatuen**):
-```lua
-pcall(function() workspace.Plots:Destroy() end); require(game.ServerScriptService.Server.Services.PlotService).Init(); require(game.ServerScriptService.Server.Services.DefenseService).Init()
+Danach **Strg + S**. Der Output zeigt dann z. B.:
+`[WorldBuilder] Welt-Check: OK Environment=482 Parts | OK Plots=311 Parts | OK Arena_WaldRuinen=95 Parts | ...`
+
+### 🖱️ Ohne Tippen: Studio-Plugin mit Buttons (empfohlen)
+
+In `%LOCALAPPDATA%\Roblox\Plugins` liegt die Datei `RealmWeltBuilder.rbxmx` (gebaut aus `plugin/` + `plugin.project.json`). Nach einem **Neustart von Roblox Studio** erscheint oben in der Werkzeugleiste der Reiter **„Realm Welt (Bau-Modus)"** mit diesen Buttons:
+
+`[Welt bauen]` `[Umgebung]` `[Plots]` `[Portale]` `[Boss-Arena]` `[Welt löschen]` `[Diagnose]`
+
+Plugin nach Änderungen an `plugin/` neu bauen:
+```bash
+rojo build plugin.project.json -o "%LOCALAPPDATA%\Roblox\Plugins\RealmWeltBuilder.rbxmx"
 ```
 
-### 🌉 Nur Video-Umgebung aufbauen (Säuresee, Hängebrücke, **rote Sky-Beacons**, Fackeln):
+### 🧩 Einzelne Bereiche gezielt neu aufbauen / nur prüfen
+| Befehl (nach `local WB = require(game.ServerScriptService.Server.Studio.WorldBuilder)`) | Ergebnis |
+| :--- | :--- |
+| `WB.BuildAll()` | Komplette Welt von Grund auf (empfohlen) |
+| `WB.BuildPlots()` | 6 Plots mit 3D-Dungeon-Sockeln, Stachelfallen & Wächter-Minions |
+| `WB.BuildEnvironment()` | Schwebende Insel mit Allee, Säuresee, Hängebrücke, Sky-Beacons, Fackeln & Waffen-Schmiede |
+| `WB.BuildPortals()` | Dimensions-Portale (Oberwelt ↔ Wald-Ruinen) mit Amethyst-Kristall |
+| `WB.BuildBossArena()` | Boss-Arena mit Ruinenmauern, Waldbäumen & Amethyst-Schrein |
+| `WB.Clear()` | Entfernt die komplette generierte Welt wieder aus der Workspace |
+| `WB.Diagnose()` | Nur prüfen: Welche Version läuft? Welche Welt-Teile existieren? |
+
+### 🆘 Plan B – falls `WorldBuilder` nicht auftaucht (funktioniert mit jedem Code-Stand)
+
+Dieser Befehl nutzt ausschließlich die bestehenden Service-Module und baut die Welt damit ebenfalls auf (**Voraussetzung:** die Service-Skripte sind auf dem neuen Stand, also im Rojo-Plugin einmal *Connect/Sync* klicken):
+
 ```lua
-pcall(function() workspace.Baseplate:Destroy() end); require(game.ServerScriptService.Server.Services.EnvironmentService).Init()
+local S = game.ServerScriptService.Server.Services
+for _, n in ipairs({"Plots", "Environment", "ToxicAcidLake", "Arena_WaldRuinen", "Portal_WaldRuinen", "Portal_Oberwelt"}) do
+	local i = workspace:FindFirstChild(n)
+	if i then i:Destroy() end
+end
+local function runInit(m) local ok, err = pcall(function() m.Init() end) if not ok then warn("[PlanB] " .. tostring(err)) end end
+runInit(require(S.BossService))
+runInit(require(S.EnvironmentService))
+runInit(require(S.PortalService))
+runInit(require(S.PlotService))
+print("[PlanB] Welt aufgebaut - jetzt Strg+S drücken")
 ```
 
-### 👹 Nur Boss-Arena aufbauen (Golem mit **gelben Augen**, **Moos-Schultern**, **Felszähnen** + **Waldbäume** + **Amethyst-Schrein**):
-```lua
-require(game.ServerScriptService.Server.Services.BossService).Init()
-```
+### 🔁 Workflow: Muss ich den Aufbau-Befehl jedes Mal eingeben?
 
-> **Tipp:** Drücke nach dem Ausführen einfach **Strg + S**, um die generierten 3D-Objekte dauerhaft in deiner Roblox-Studio-Welt zu speichern.
+* **Einmal bauen + Strg+S** → die Welt liegt dauerhaft im Place-File und ist bei jedem Öffnen im Bau-Modus da. Für normales Arbeiten brauchst du also nichts weiter.
+* **Beim Spielen (Play)** baut der Server die Welt sowieso bei jedem Start neu aus dem Code auf → dort ist **nie** ein Befehl nötig.
+* **Nur wenn du die Welt im Code änderst** (Positionen, neue Teile, Farben in den Services) und das Ergebnis schon im **Bau-Modus** sehen willst: Button **„Welt bauen"** (bzw. `WB.BuildAll()`). Häufig reicht auch nur der geänderte Bereich, z. B. **„Plots"** oder **„Umgebung"** – das ist schneller und lässt den Rest unangetastet.
+* ⚠️ **Wichtig:** Objekte, die du im Bau-Modus INNERHALB von `Workspace.Plots`, `Workspace.Environment`, `Workspace.Portal_*` oder `Workspace.Arena_WaldRuinen` verschiebst/dekorierst, werden beim Spielen bzw. beim nächsten Aufbau überschrieben. Eigene Bauten deshalb **außerhalb** dieser Ordner anlegen (z. B. in einem eigenen Ordner `Workspace.MeinBau`).
+
+> **Tipp 1:** Ein Fehler in **einem** Service verhindert nicht mehr die ganze Welt: Im Output steht dann `[Init] FEHLER in XYZ: ...` und die übrigen Teile werden trotzdem gebaut. Diese Zeile (plus die `[WorldBuilder]`-Zeilen) bitte beim Melden eines Problems mitschicken.
+>
+> **Tipp 2:** Die Befehle funktionieren **nur im Bau-Modus** (nicht während des Spielens) – außerhalb wird abgebrochen, um die laufende Welt nicht zu zerstören.
+>
+> **Tipp 3:** Beim Spielen bauen die Services die Welt wieder selbst auf und räumen vorher auf – es entstehen keine Duplikate, egal wie oft du den Builder benutzt.
 
 ### 🎮 Gameplay- & Kampffunktionen im Spiel:
 | Taste / Interaktion | Aktion |
@@ -88,7 +138,10 @@ Realm-Raiders-and-Relics/
     │   └── Data/
     │       └── PlayerDataTemplate.luau -- Typisiertes Datenmodell (ProfileService-kompatibel)
     ├── server/               --> ServerScriptService.Server
-    │   └── Init.server.luau  -- Server-Einstiegspunkt & Framework-Bootstrap
+    │   ├── Init.server.luau  -- Server-Einstiegspunkt & Framework-Bootstrap
+    │   ├── Services/         -- PlotService, EnvironmentService, BossService, RaidService, DefenseService, PortalService
+    │   └── Studio/
+    │       └── WorldBuilder.luau -- Baut die komplette Welt im Bau-Modus von Roblox Studio
     └── client/               --> StarterPlayer.StarterPlayerScripts.Client
         └── init.client.luau  -- Client-Einstiegspunkt
 ```
@@ -117,6 +170,7 @@ Realm-Raiders-and-Relics/
 
 3. **In Roblox Studio verbinden:**
    * Öffne Roblox Studio und erstelle einen leeren Baseplate-Ort (oder baue das Place-File mit `rojo build -o "RealmRaiders.rbxlx"`).
+   * Der Standard-Baseplate wird von der Spielwelt automatisch entfernt (die Insel ist eine schwebende Insel über dem Säuresee).
    * Öffne das **Rojo Plugin** in Studio und klicke auf **Connect** (Standardport: `34872`).
 
 

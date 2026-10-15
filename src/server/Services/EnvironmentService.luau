@@ -6,8 +6,40 @@ local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
-local EventsFolder = Shared:WaitForChild("Events")
-local OpenShopWindowEvent = EventsFolder:WaitForChild("OpenShopWindow") :: RemoteEvent
+
+-- RemoteEvents: fehlende Events werden sofort selbst erzeugt.
+-- Bewusst KEIN :WaitForChild() - im Studio-Bau-Modus laufen keine Skripte,
+-- ein Warten auf noch nicht existierende Events würde dort ewig hängen.
+local function getEventsFolder(): Folder
+	local events = Shared:FindFirstChild("Events")
+	if events and events:IsA("Folder") then
+		return events
+	end
+	if events then
+		events:Destroy()
+	end
+	local newEvents = Instance.new("Folder")
+	newEvents.Name = "Events"
+	newEvents.Parent = Shared
+	return newEvents
+end
+
+local function getOrCreateRemoteEvent(name: string): RemoteEvent
+	local events = getEventsFolder()
+	local existing = events:FindFirstChild(name)
+	if existing and existing:IsA("RemoteEvent") then
+		return existing
+	end
+	if existing then
+		existing:Destroy()
+	end
+	local newRemote = Instance.new("RemoteEvent")
+	newRemote.Name = name
+	newRemote.Parent = events
+	return newRemote
+end
+
+local OpenShopWindowEvent = getOrCreateRemoteEvent("OpenShopWindow")
 
 local EnvironmentService = {}
 local isInitialized = false

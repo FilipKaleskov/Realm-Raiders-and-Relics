@@ -40,16 +40,24 @@ local ProfileStore: ProfileStore = (ProfileService :: any).GetProfileStore(
 	PlayerDataTemplate
 )
 
--- Events Folder & Remotes
-local function getOrCreateEventsFolder(): Folder
+local ConfigFolder = Shared:WaitForChild("Config")
+local ItemConfigModule = ConfigFolder:WaitForChild("ItemConfig") :: ModuleScript
+local ItemConfig = require(ItemConfigModule)
+
+-- RemoteEvents: fehlende Events werden sofort selbst erzeugt statt auf sie zu warten.
+-- Wichtig für den Studio-Bau-Modus (dort laufen keine Skripte -> :WaitForChild() würde ewig hängen).
+local function getEventsFolder(): Folder
 	local events = Shared:FindFirstChild("Events")
-	if not events then
-		local newEvents = Instance.new("Folder")
-		newEvents.Name = "Events"
-		newEvents.Parent = Shared
-		return newEvents
+	if events and events:IsA("Folder") then
+		return events
 	end
-	return events :: Folder
+	if events then
+		events:Destroy()
+	end
+	local newEvents = Instance.new("Folder")
+	newEvents.Name = "Events"
+	newEvents.Parent = Shared
+	return newEvents
 end
 
 local function getOrCreateRemoteEvent(parent: Instance, name: string): RemoteEvent
@@ -57,17 +65,17 @@ local function getOrCreateRemoteEvent(parent: Instance, name: string): RemoteEve
 	if existing and existing:IsA("RemoteEvent") then
 		return existing
 	end
+	if existing then
+		existing:Destroy()
+	end
 	local newRemote = Instance.new("RemoteEvent")
 	newRemote.Name = name
 	newRemote.Parent = parent
 	return newRemote
 end
 
-local ConfigFolder = Shared:WaitForChild("Config")
-local ItemConfigModule = ConfigFolder:WaitForChild("ItemConfig") :: ModuleScript
-local ItemConfig = require(ItemConfigModule)
+local EventsFolder = getEventsFolder()
 
-local EventsFolder = getOrCreateEventsFolder()
 local InventoryUpdatedEvent = getOrCreateRemoteEvent(EventsFolder, "InventoryUpdated")
 local RequestInventoryEvent = getOrCreateRemoteEvent(EventsFolder, "RequestInventory")
 local GoldUpdatedEvent = getOrCreateRemoteEvent(EventsFolder, "GoldUpdated")

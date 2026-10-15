@@ -36,21 +36,31 @@ local function getDefenseService(): any
 end
 
 -- Events vorbereiten
-local function getOrCreateEventsFolder(): Folder
+-- WICHTIG: Hier darf niemals :WaitForChild() benutzt werden! Im Studio-Bau-Modus
+-- laufen keine Skripte, die Events existieren dort also noch nicht - ein Warten
+-- würde die Studio-Befehlszeile ewig blockieren. Fehlende Events werden deshalb
+-- einfach sofort selbst angelegt.
+local function getEventsFolder(): Folder
 	local events = Shared:FindFirstChild("Events")
-	if not events then
-		local newEvents = Instance.new("Folder")
-		newEvents.Name = "Events"
-		newEvents.Parent = Shared
-		return newEvents
+	if events and events:IsA("Folder") then
+		return events
 	end
-	return events :: Folder
+	if events then
+		events:Destroy()
+	end
+	local newEvents = Instance.new("Folder")
+	newEvents.Name = "Events"
+	newEvents.Parent = Shared
+	return newEvents
 end
 
-local function getOrCreateRemoteEvent(parent: Folder, name: string): RemoteEvent
+local function getOrCreateRemoteEvent(parent: Instance, name: string): RemoteEvent
 	local existing = parent:FindFirstChild(name)
 	if existing and existing:IsA("RemoteEvent") then
 		return existing
+	end
+	if existing then
+		existing:Destroy()
 	end
 	local newRemote = Instance.new("RemoteEvent")
 	newRemote.Name = name
@@ -58,7 +68,7 @@ local function getOrCreateRemoteEvent(parent: Folder, name: string): RemoteEvent
 	return newRemote
 end
 
-local EventsFolder = getOrCreateEventsFolder()
+local EventsFolder = getEventsFolder()
 local GoldUpdatedEvent = getOrCreateRemoteEvent(EventsFolder, "GoldUpdated")
 local NotificationEvent = getOrCreateRemoteEvent(EventsFolder, "ShowNotification")
 local PlotStatusUpdatedEvent = getOrCreateRemoteEvent(EventsFolder, "PlotStatusUpdated")

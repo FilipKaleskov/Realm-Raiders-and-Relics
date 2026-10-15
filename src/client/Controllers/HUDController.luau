@@ -10,6 +10,7 @@ local StarterGui = game:GetService("StarterGui")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local Workspace = game:GetService("Workspace")
 local TextService = game:GetService("TextService")
+local Debris = game:GetService("Debris")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui
@@ -33,8 +34,11 @@ export type InventoryData = PlayerDataTemplate.InventoryData
 
 local ItemConfigModule = ConfigFolder:WaitForChild("ItemConfig") :: ModuleScript
 local ItemConfig = require(ItemConfigModule)
+local AudioConfigModule = ConfigFolder:WaitForChild("AudioConfig") :: ModuleScript
+local AudioConfig = require(AudioConfigModule)
 
 local GoldUpdated = Events:WaitForChild("GoldUpdated") :: RemoteEvent
+local GoldGained = Events:WaitForChild("GoldGained") :: RemoteEvent
 local NotificationEvent = Events:WaitForChild("ShowNotification") :: RemoteEvent
 local DimensionChanged = Events:WaitForChild("DimensionChanged") :: RemoteEvent
 local BossUpdated = Events:WaitForChild("BossUpdated") :: RemoteEvent
@@ -2487,6 +2491,229 @@ function HUDController.UpdateGold(newGold: number, currentCPS: number?)
 	end
 end
 
+-- ==========================================
+-- PHASE 2: FLOATING ECONOMY & LOOT-POPUPS (Juice)
+-- ==========================================
+
+-- Ab diesem Zuwachs pulsiert der Gold-Zähler mit Goldflash
+local GOLD_FLASH_THRESHOLD = 50
+
+-- Spawnt ein grünes/goldenes "+XX Gold"-Label über dem Charakter, das sanft emporsteigt
+local function showFloatingGoldPopup(amount: number)
+	local char = LocalPlayer.Character
+	local root = if char then char:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
+	if not root then
+		return
+	end
+
+	local anchor = Instance.new("Part")
+	anchor.Name = "GoldGainPopupAnchor"
+	anchor.Size = Vector3.new(0.2, 0.2, 0.2)
+	anchor.Position = root.Position + Vector3.new(math.random(-8, 8) / 10, 3.6, math.random(-8, 8) / 10)
+	anchor.Transparency = 1
+	anchor.Anchored = true
+	anchor.CanCollide = false
+	anchor.CanQuery = false
+	anchor.CanTouch = false
+	anchor.CastShadow = false
+	anchor.Parent = Workspace
+
+	-- Große Gaben erhalten eine größere, fettere Anzeige (Juice-Skalierung)
+	local sizeScale = math.clamp(1 + math.log10(math.max(amount, 1)) * 0.12, 1, 1.45)
+	local baseWidth = 150 * sizeScale
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "GoldGainPopup"
+	billboard.Size = UDim2.new(0, baseWidth, 0, 46 * sizeScale)
+	billboard.AlwaysOnTop = true
+	billboard.MaxDistance = 120
+	billboard.Parent = anchor
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Value"
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Font = CheckUITheme.Typography.Font -- GothamBlack (Check-UI Standard)
+	label.TextScaled = true
+	label.Text = string.format("+%s Gold", formatNumber(amount))
+	label.TextColor3 = Color3.fromRGB(120, 255, 120)
+	label.TextTransparency = 1
+	label.ZIndex = 2
+	label.Parent = billboard
+
+	-- Grüner -> Goldener Farbverlauf (Money-Look)
+	local gradient = Instance.new("UIGradient")
+	gradient.Rotation = 90
+	gradient.Color = ColorSequence.new{
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(150, 255, 100)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 235, 60)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 190, 0)),
+	}
+	gradient.Parent = label
+
+	-- Dicker schwarzer Kontur-Stroke (Check-UI Standard)
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(0, 0, 0)
+	stroke.Thickness = 3.4
+	stroke.Transparency = 1
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	stroke.Parent = label
+
+	-- Juicy Pop-In (Back-Easing) + sanftes Emporsteigen
+	local popIn = TweenService:Create(
+		billboard,
+		TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+		{ Size = UDim2.new(0, baseWidth * 1.15, 0, 46 * sizeScale * 1.15) }
+	)
+	local settle = TweenService:Create(
+		billboard,
+		TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Size = UDim2.new(0, baseWidth, 0, 46 * sizeScale) }
+	)
+	TweenService:Create(label, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { TextTransparency = 0 }):Play()
+	TweenService:Create(stroke, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Transparency = 0 }):Play()
+	popIn:Play()
+	popIn.Completed:Once(function()
+		settle:Play()
+	end)
+
+	TweenService:Create(
+		anchor,
+		TweenInfo.new(0.95, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Position = anchor.Position + Vector3.new(0, 4.2, 0) }
+	):Play()
+
+	-- Nach 0.9s sanft verblassen
+	task.delay(0.9, function()
+		if not anchor.Parent then
+			return
+		end
+		TweenService:Create(label, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { TextTransparency = 1 }):Play()
+		TweenService:Create(stroke, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Transparency = 1 }):Play()
+	end)
+
+	-- Garantiertes Memory-Cleanup
+	Debris:AddItem(anchor, 1.5)
+end
+
+-- Pulsierender Gold-Zähler: Dynamischer Farbaufläufer (Goldflash) + kurzer Scale-Pop
+local function playGoldCounterFlash()
+	if not goldAmountLabel then
+		return
+	end
+
+	-- 1. Kurzer Scale-Pop des Zählers
+	local existingScale = goldAmountLabel:FindFirstChild("GoldPopScale")
+	if existingScale and not existingScale:IsA("UIScale") then
+		existingScale:Destroy()
+		existingScale = nil
+	end
+	local popScale: UIScale
+	if existingScale then
+		popScale = existingScale :: UIScale
+	else
+		popScale = Instance.new("UIScale")
+		popScale.Name = "GoldPopScale"
+		popScale.Parent = goldAmountLabel
+	end
+	local grow = TweenService:Create(
+		popScale,
+		TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+		{ Scale = 1.28 }
+	)
+	local settle = TweenService:Create(
+		popScale,
+		TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Scale = 1 }
+	)
+	grow:Play()
+	grow.Completed:Once(function()
+		settle:Play()
+	end)
+
+	-- 2. Goldflash: Heller Gradient wandert als Lichtstreifen über die Ziffern
+	local existingFlash = goldAmountLabel:FindFirstChild("GoldFlash") :: UIGradient?
+	if existingFlash then
+		existingFlash:Destroy()
+	end
+	local flash = Instance.new("UIGradient")
+	flash.Name = "GoldFlash"
+	flash.Rotation = 0
+	flash.Color = ColorSequence.new{
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+		ColorSequenceKeypoint.new(0.45, Color3.fromRGB(255, 245, 170)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 190, 0)),
+	}
+	flash.Offset = Vector2.new(-1, 0)
+	flash.Parent = goldAmountLabel
+	TweenService:Create(
+		flash,
+		TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Offset = Vector2.new(1, 0) }
+	):Play()
+	task.delay(0.65, function()
+		if flash and flash.Parent then
+			flash:Destroy()
+		end
+	end)
+
+	-- 3. Münz-Badge pulsiert mit
+	local coinBadge = if goldCardFrame then goldCardFrame:FindFirstChild("CoinBadge") :: Frame? else nil
+	if coinBadge then
+		local existingBadgeScale = coinBadge:FindFirstChild("BadgePopScale")
+		if existingBadgeScale and not existingBadgeScale:IsA("UIScale") then
+			existingBadgeScale:Destroy()
+			existingBadgeScale = nil
+		end
+		local badgeScale: UIScale
+		if existingBadgeScale then
+			badgeScale = existingBadgeScale :: UIScale
+		else
+			badgeScale = Instance.new("UIScale")
+			badgeScale.Name = "BadgePopScale"
+			badgeScale.Parent = coinBadge
+		end
+		local badgeGrow = TweenService:Create(
+			badgeScale,
+			TweenInfo.new(0.1, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+			{ Scale = 1.25 }
+		)
+		local badgeSettle = TweenService:Create(
+			badgeScale,
+			TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ Scale = 1 }
+		)
+		badgeGrow:Play()
+		badgeGrow.Completed:Once(function()
+			badgeSettle:Play()
+		end)
+	end
+end
+
+-- Zentrale Verarbeitung bestätigter Gold-Zuwächse (Schmelz-Altar, Boss-Sieg, ...):
+-- Floating "+XX Gold"-Popup über dem Charakter + CoinGain-Sound + Goldflash
+local function onGoldGained(amount: number, source: string?)
+	if typeof(amount) ~= "number" or amount <= 0 then
+		return
+	end
+
+	-- Sound-Layering: Der majestätische Altar-Gong kommt zuerst, das Münzklingeln folgt kurz darauf
+	if source == "Altar" then
+		AudioConfig.PlayTag("AltarMeltSuccess")
+		task.delay(0.18, function()
+			AudioConfig.PlayTag("CoinGain")
+		end)
+	else
+		AudioConfig.PlayTag("CoinGain")
+	end
+
+	showFloatingGoldPopup(amount)
+
+	if amount >= GOLD_FLASH_THRESHOLD then
+		playGoldCounterFlash()
+	end
+end
+
 -- Aktualisiert das Inventar
 function HUDController.UpdateInventory(inventory: InventoryData)
 	cachedInventory = inventory
@@ -2626,6 +2853,11 @@ function HUDController.Init()
 	-- Server-Events verbinden
 	GoldUpdated.OnClientEvent:Connect(function(newGold: number, currentCPS: number?)
 		HUDController.UpdateGold(newGold, currentCPS)
+	end)
+
+	-- Bestätigte Gold-Zuwächse (Altar / Boss): Floating-Popup, Münzklingeln & Goldflash
+	GoldGained.OnClientEvent:Connect(function(amount: number, source: string?)
+		onGoldGained(amount, source)
 	end)
 
 	InventoryUpdated.OnClientEvent:Connect(function(inventory: InventoryData)

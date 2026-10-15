@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local Debris = game:GetService("Debris")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
@@ -15,10 +16,13 @@ local AttackIntent = EventsFolder:WaitForChild("AttackIntent") :: RemoteEvent
 local BossTelegraph = EventsFolder:WaitForChild("BossTelegraphStarted") :: RemoteEvent
 local BossDefeated = EventsFolder:WaitForChild("BossDefeated") :: RemoteEvent
 local InventoryUpdated = EventsFolder:WaitForChild("InventoryUpdated") :: RemoteEvent
+local EntityDamaged = EventsFolder:WaitForChild("EntityDamaged") :: RemoteEvent
 
 local ConfigFolder = Shared:WaitForChild("Config")
 local ItemConfigModule = ConfigFolder:WaitForChild("ItemConfig") :: ModuleScript
 local ItemConfig = require(ItemConfigModule)
+local AudioConfigModule = ConfigFolder:WaitForChild("AudioConfig") :: ModuleScript
+local AudioConfig = require(AudioConfigModule)
 
 local CombatController = {}
 local isInitialized = false
@@ -47,12 +51,16 @@ local function isFirstPerson(): boolean
 	return (Camera.CFrame.Position - head.Position).Magnitude < 1.4
 end
 
--- Spielt einen kleinen visuellen Schwertschwung / Screenshake ab
+-- Spielt einen kleinen visuellen Schwertschwung / Screenshake + Klingen-Whoosh ab
 local function playAttackFeedback()
 	local char = LocalPlayer.Character
 	if not char then
 		return
 	end
+	local root = char:FindFirstChild("HumanoidRootPart") :: BasePart?
+
+	-- Klingen-Whoosh mit Pitch-Variation (sofort hörbar -> Null-Latenz-Gefühl)
+	AudioConfig.PlayTag("SwordSwing", root)
 
 	-- Subtiler Camera Punch über Humanoid.CameraOffset (funktioniert nahtlos in First-Person & Third-Person ohne CFrame-Reset!)
 	local hum = char:FindFirstChildOfClass("Humanoid")
@@ -78,7 +86,6 @@ local function playAttackFeedback()
 	end
 
 	-- Klingen-Schwung-Trail: Farbe & Stil passen sich der ausgerüsteten Waffe an
-	local root = char:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not root then
 		return
 	end
@@ -264,12 +271,23 @@ local function executeDash()
 
 	spawnBlueDashVFX()
 
-	-- FOV-Blur-Effekt (respektiert vorheriges FOV wie z.B. Sprinten)
+	-- Windstoß/Energie-Zischen mit Pitch-Variation
+	AudioConfig.PlayTag("DashWhoosh", root)
+
+	-- FoV-Punch: kurz von 70 auf 78 und zurück auf 70 (respektiert vorheriges FOV wie z.B. Sprinten)
 	if Camera then
 		local origFOV = Camera.FieldOfView
-		TweenService:Create(Camera, TweenInfo.new(0.06), { FieldOfView = math.min(105, origFOV + 18) }):Play()
-		task.delay(0.18, function()
-			TweenService:Create(Camera, TweenInfo.new(0.22), { FieldOfView = origFOV }):Play()
+		TweenService:Create(
+			Camera,
+			TweenInfo.new(0.05, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ FieldOfView = math.min(105, origFOV + 8) }
+		):Play()
+		task.delay(0.12, function()
+			TweenService:Create(
+				Camera,
+				TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{ FieldOfView = origFOV }
+			):Play()
 		end)
 	end
 
@@ -277,6 +295,203 @@ local function executeDash()
 	task.delay(0.18, function()
 		bv:Destroy()
 	end)
+end
+
+-- ==========================================
+-- PHASE 2: JUICY DAMAGE NUMBERS & HIT-SPARKS (clientseitig, Check-UI Standard)
+-- ==========================================
+
+-- Basengröße der schwebenden Schadenszahl (wird für den Bounce skaliert)
+local DAMAGE_NUMBER_BASE_SIZE = UDim2.new(0, 130, 0, 46)
+local DAMAGE_NUMBER_LIFETIME = 1.1
+
+-- Check-UI Farbcodes: Ausgeteilter Schaden = Gelb/Orange, Krit = Purpur/Gold, Eingesteckt = Rot
+local DAMAGE_COLOR_OUTGOING = Color3.fromRGB(255, 210, 40)
+local DAMAGE_COLOR_OUTGOING_DEEP = Color3.fromRGB(255, 140, 0)
+local DAMAGE_COLOR_CRIT = Color3.fromRGB(190, 80, 255)
+local DAMAGE_COLOR_CRIT_GOLD = Color3.fromRGB(255, 215, 0)
+local DAMAGE_COLOR_INCOMING = Color3.fromRGB(255, 60, 60)
+
+-- Erstellt eine unsichtbare, nicht kollidierbare Anker-Part (Basis für Billboards, Sounds & Partikel)
+local function createEffectAnchor(position: Vector3, name: string): Part
+	local anchor = Instance.new("Part")
+	anchor.Name = name
+	anchor.Size = Vector3.new(0.2, 0.2, 0.2)
+	anchor.Position = position
+	anchor.Transparency = 1
+	anchor.Anchored = true
+	anchor.CanCollide = false
+	anchor.CanQuery = false
+	anchor.CanTouch = false
+	anchor.CastShadow = false
+	anchor.Parent = Workspace
+	return anchor
+end
+
+-- Erzeugt eine juicy, federnde Schadenszahl mit GothamBlack-Typografie & dicker schwarzer Kontur
+-- (Bounce: explosionsartig auf 1.3x, federt zurück, steigt 4 Studs auf und verblasst nach ~0.8s)
+local function spawnDamageNumber(position: Vector3, damage: number, isCrit: boolean, isIncoming: boolean)
+	local anchor = createEffectAnchor(
+		position + Vector3.new(math.random(-12, 12) / 10, 2.7, math.random(-12, 12) / 10),
+		"DamageNumberAnchor"
+	)
+
+	local baseSize = if isCrit then DAMAGE_NUMBER_BASE_SIZE * 1.25 else DAMAGE_NUMBER_BASE_SIZE
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "DamageNumber"
+	billboard.Size = baseSize * 0.45 -- Start klein für den Pop
+	billboard.AlwaysOnTop = true
+	billboard.MaxDistance = 250
+	billboard.Parent = anchor
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Value"
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.GothamBlack
+	label.TextScaled = true
+	label.TextTransparency = 1
+	label.ZIndex = 2
+	label.Parent = billboard
+
+	-- Text & Farbgebung
+	if isIncoming then
+		-- Eingesteckter Schaden: Alarmierendes Rot
+		label.Text = string.format("-%d", math.max(0, math.floor(damage)))
+		label.TextColor3 = DAMAGE_COLOR_INCOMING
+	elseif isCrit then
+		-- Kritischer Treffer / Hohe Waffe: Leuchtendes Purpur/Gold
+		label.Text = string.format("💥 CRIT! -%d", math.max(0, math.floor(damage)))
+		label.TextColor3 = DAMAGE_COLOR_CRIT
+		local gradient = Instance.new("UIGradient")
+		gradient.Rotation = 90
+		gradient.Color = ColorSequence.new{
+			ColorSequenceKeypoint.new(0, DAMAGE_COLOR_CRIT),
+			ColorSequenceKeypoint.new(0.55, Color3.fromRGB(255, 120, 255)),
+			ColorSequenceKeypoint.new(1, DAMAGE_COLOR_CRIT_GOLD),
+		}
+		gradient.Parent = label
+	else
+		-- Ausgeteilter Schaden: Knalliges Gelb/Orange
+		label.Text = string.format("-%d", math.max(0, math.floor(damage)))
+		label.TextColor3 = DAMAGE_COLOR_OUTGOING
+		local gradient = Instance.new("UIGradient")
+		gradient.Rotation = 90
+		gradient.Color = ColorSequence.new{
+			ColorSequenceKeypoint.new(0, DAMAGE_COLOR_OUTGOING),
+			ColorSequenceKeypoint.new(1, DAMAGE_COLOR_OUTGOING_DEEP),
+		}
+		gradient.Parent = label
+	end
+
+	-- Dicker schwarzer Kontur-Stroke (Check-UI Standard)
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(0, 0, 0)
+	stroke.Thickness = if isCrit then 4.0 else 3.2
+	stroke.Transparency = 1
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	stroke.Parent = label
+
+	-- Juicy Bounce-Animation: explosionsartig auf 1.3x skalieren, dann leicht zurückfedern
+	local popIn = TweenService:Create(
+		billboard,
+		TweenInfo.new(0.12, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+		{ Size = baseSize * 1.3 }
+	)
+	local settle = TweenService:Create(
+		billboard,
+		TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Size = baseSize }
+	)
+	TweenService:Create(label, TweenInfo.new(0.05, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { TextTransparency = 0 }):Play()
+	TweenService:Create(stroke, TweenInfo.new(0.05, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Transparency = 0 }):Play()
+	popIn:Play()
+	popIn.Completed:Once(function()
+		settle:Play()
+	end)
+
+	-- Ca. 4 Studs nach oben steigen, während sie nach 0.8s verblasst
+	TweenService:Create(
+		anchor,
+		TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Position = anchor.Position + Vector3.new(0, 4, 0) }
+	):Play()
+
+	task.delay(0.55, function()
+		if not anchor.Parent then
+			return
+		end
+		TweenService:Create(label, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { TextTransparency = 1 }):Play()
+		TweenService:Create(stroke, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { Transparency = 1 }):Play()
+	end)
+
+	-- Garantiertes Memory-Cleanup (Anker + Billboard + Label + Stroke auf einen Schlag)
+	Debris:AddItem(anchor, DAMAGE_NUMBER_LIFETIME)
+end
+
+-- Erzeugt einen kurzen 3D-Neonfunken-Burst an der Einschlagposition (Gold/Gelb, Lebensdauer 0.15s)
+local function spawnHitSparks(position: Vector3, isCrit: boolean, isIncoming: boolean)
+	local anchor = createEffectAnchor(position + Vector3.new(0, 0.9, 0), "HitSparksAnchor")
+
+	local attachment = Instance.new("Attachment")
+	attachment.Parent = anchor
+
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Name = "HitSparks"
+	emitter.Rate = 0
+	emitter.Lifetime = NumberRange.new(0.12, 0.15)
+	emitter.Speed = NumberRange.new(18, 30)
+	emitter.Drag = 4
+	emitter.Acceleration = Vector3.new(0, -60, 0)
+	emitter.SpreadAngle = Vector2.new(180, 180)
+	emitter.Size = NumberSequence.new{
+		NumberSequenceKeypoint.new(0, if isCrit then 0.42 else 0.3),
+		NumberSequenceKeypoint.new(1, 0),
+	}
+	emitter.Transparency = NumberSequence.new(0.05)
+	emitter.LightEmission = 1
+	emitter.LightInfluence = 0
+	if isIncoming then
+		-- Rot-Orange Funken, wenn der Spieler selbst getroffen wurde
+		emitter.Color = ColorSequence.new{
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 150, 120)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 40, 40)),
+		}
+	elseif isCrit then
+		-- Krit: Purpur/Gold Funken (passend zur Schadenszahl)
+		emitter.Color = ColorSequence.new{
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(215, 120, 255)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 215, 0)),
+		}
+	else
+		-- Standard: 3D-Neonfunken in Gold/Gelb
+		emitter.Color = ColorSequence.new{
+			ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 235, 120)),
+			ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 140, 0)),
+		}
+	end
+	emitter.Parent = attachment
+	emitter:Emit(if isCrit then 20 else 12)
+
+	-- Partikel leben 0.15s -> Anker nach 0.5s restlos entfernen
+	Debris:AddItem(anchor, 0.5)
+end
+
+-- Gesamtes Treffer-Feedback: Schadenszahl + Funken + Treffersound (Stein/Fleisch) an der Einschlagposition
+local function playHitFeedback(position: Vector3, damage: number, isCrit: boolean, isIncoming: boolean, targetKind: string)
+	spawnDamageNumber(position, damage, isCrit, isIncoming)
+	spawnHitSparks(position, isCrit, isIncoming)
+
+	-- Treffersound läuft auf einem eigenen Audio-Anker, der die kurzen Funken überlebt und
+	-- nach Ablauf des Sounds sofort entfernt wird (keine abgeschnittenen Sounds, kein Leak).
+	local audioAnchor = createEffectAnchor(position, "HitSoundAnchor")
+	local hitTag: string = if targetKind == "Player" then "SwordHitFlesh" else "SwordHitStone"
+	local hitSound = AudioConfig.PlayTag(hitTag, audioAnchor)
+	hitSound.Ended:Once(function()
+		audioAnchor:Destroy()
+	end)
+	Debris:AddItem(audioAnchor, 4) -- Sicherheitsnetz, falls das Asset nicht (rechtzeitig) lädt
 end
 
 -- ==========================================
@@ -458,7 +673,23 @@ function CombatController.Init()
 		showGoldCelebration(goldAmount)
 	end)
 
-	print("[CombatController] Initialisiert: Nahkampf (F/Klick), Blauer Combat-Dash (Q), Slash-Trail & Gold-Popup aktiv.")
+	-- Server-bestätigter Schaden -> sofortige Client-Juice (Schadenszahlen, Funken, Treffersounds).
+	-- isLocalPlayerVictim = true -> Alarmierendes Rot (der lokale Spieler hat Schaden eingesteckt).
+	EntityDamaged.OnClientEvent:Connect(function(
+		position: Vector3,
+		damage: number,
+		isCrit: boolean,
+		isLocalPlayerVictim: boolean,
+		targetKind: string?
+	)
+		if typeof(position) ~= "Vector3" or typeof(damage) ~= "number" then
+			return
+		end
+		local kind = if typeof(targetKind) == "string" then targetKind else "Boss"
+		playHitFeedback(position, damage, isCrit == true, isLocalPlayerVictim == true, kind)
+	end)
+
+	print("[CombatController] Initialisiert: Nahkampf (F/Klick), Dash (Q) mit FoV-Punch, Slash-Trail, Damage Numbers, Hit-Sparks & Sound-Juice aktiv.")
 end
 
 return CombatController

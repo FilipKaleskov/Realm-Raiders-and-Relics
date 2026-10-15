@@ -319,9 +319,10 @@ function RaidService.StartTheft(thief: Player, victim: any, slotIndex: number, c
 		end)
 	end
 
-	-- BaseIntruded-Event ans Opfer senden (aktiviert das rote Comic-Banner auf dessen Client)
+	-- BaseIntruded-Event ans Opfer senden (aktiviert das rote Comic-Banner + RaidAlarmSiren auf dessen Client).
+	-- Die Namen werden mitgeschickt, damit Banner & Sirene synchron und informativ sind.
 	if isRealPlayer and typeof(victim) == "Instance" and victim:IsA("Player") then
-		BaseIntrudedEvent:FireClient(victim)
+		BaseIntrudedEvent:FireClient(victim, thief.DisplayName, coreName)
 	end
 
 	-- 2. Attribute auf dem Dieb setzen (inklusive Stufe!)

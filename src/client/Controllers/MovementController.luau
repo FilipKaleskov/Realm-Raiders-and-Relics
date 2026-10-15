@@ -14,6 +14,10 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local EventsFolder = Shared:WaitForChild("Events")
 local NotificationEvent = EventsFolder:WaitForChild("ShowNotification") :: RemoteEvent
 
+local ConfigFolder = Shared:WaitForChild("Config")
+local AudioConfigModule = ConfigFolder:WaitForChild("AudioConfig") :: ModuleScript
+local AudioConfig = require(AudioConfigModule)
+
 local MovementController = {}
 local isInitialized = false
 
@@ -96,7 +100,14 @@ local function setRunningPuffs(enabled: boolean)
 end
 
 -- Zeigt das ikonische rote "BASE INTRUDED!"-Comic-Banner (wie im Pitch-Video)
-local function showBaseIntrudedBanner()
+local function showBaseIntrudedBanner(thiefName: string?, coreName: string?)
+	-- 🚨 RaidAlarmSiren: Schrilles Warnhorn synchron zum roten Banner (2D -> beim Opfer garantiert hörbar).
+	-- Ein zweiter Puls folgt kurz darauf, damit die Sirene den Raubzug akustisch antreibt.
+	AudioConfig.PlayTag("RaidAlarmSiren")
+	task.delay(2.4, function()
+		AudioConfig.PlayTag("RaidAlarmSiren")
+	end)
+
 	local playerGui = LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui
 	local existing = playerGui:FindFirstChild("BaseIntrudedGui")
 	if existing then existing:Destroy() end
@@ -164,13 +175,15 @@ local function showBaseIntrudedBanner()
 	mainStroke.Transparency = 1
 	mainStroke.Parent = mainLabel
 
-	-- Sub-Text: Spieler-Info
+	-- Sub-Text: Spieler-Info (falls der Server Name & Kern mitgeliefert hat)
 	local subLabel = Instance.new("TextLabel")
 	subLabel.Name = "SubText"
 	subLabel.Size = UDim2.new(1, -20, 0, 40)
 	subLabel.Position = UDim2.new(0, 10, 0, 92)
 	subLabel.BackgroundTransparency = 1
-	subLabel.Text = "⚠️  EIN SPIELER STIEHLT DEINEN SEELENKERN!"
+	subLabel.Text = if thiefName and coreName
+		then string.format("⚠️  %s STIEHLT DEINEN %s-KERN!", string.upper(thiefName), string.upper(coreName))
+		else "⚠️  EIN SPIELER STIEHLT DEINEN SEELENKERN!"
 	subLabel.TextColor3 = Color3.fromRGB(255, 220, 50)
 	subLabel.Font = Enum.Font.GothamBlack
 	subLabel.TextSize = 22
@@ -412,10 +425,10 @@ function MovementController.Init()
 		end
 	end)
 
-	-- BASE INTRUDED! Banner via speziellem Event (wird vom Server an das Opfer gesendet)
+	-- BASE INTRUDED! Banner + RaidAlarmSiren via speziellem Event (wird vom Server an das Opfer gesendet)
 	local BaseIntrudedEvent = EventsFolder:WaitForChild("BaseIntruded") :: RemoteEvent
-	BaseIntrudedEvent.OnClientEvent:Connect(function()
-		showBaseIntrudedBanner()
+	BaseIntrudedEvent.OnClientEvent:Connect(function(thiefName: string?, coreName: string?)
+		showBaseIntrudedBanner(thiefName, coreName)
 	end)
 
 	setupMobileSprintButton()

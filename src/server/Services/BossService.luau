@@ -13,6 +13,8 @@ local BossConfigModule = ConfigFolder:WaitForChild("BossConfig") :: ModuleScript
 local BossConfig = require(BossConfigModule)
 local ItemConfigModule = ConfigFolder:WaitForChild("ItemConfig") :: ModuleScript
 local ItemConfig = require(ItemConfigModule)
+local AudioConfigModule = ConfigFolder:WaitForChild("AudioConfig") :: ModuleScript
+local AudioConfig = require(AudioConfigModule)
 
 local EventsFolder = Shared:WaitForChild("Events")
 
@@ -39,8 +41,15 @@ local BossTelegraphEvent = getOrCreateRemoteEvent(EventsFolder, "BossTelegraphSt
 local NotificationEvent = getOrCreateRemoteEvent(EventsFolder, "ShowNotification")
 local GoldUpdatedEvent = getOrCreateRemoteEvent(EventsFolder, "GoldUpdated")
 local BossDefeatedEvent = getOrCreateRemoteEvent(EventsFolder, "BossDefeated")
+local EntityDamagedEvent = getOrCreateRemoteEvent(EventsFolder, "EntityDamaged")
+local GoldGainedEvent = getOrCreateRemoteEvent(EventsFolder, "GoldGained")
 
 local BossService = {}
+
+-- Combat-Juice-Konstanten (Phase 2)
+local CRIT_CHANCE = 0.2 -- 20% Chance auf einen kritischen Treffer
+local CRIT_MULTIPLIER = 1.75 -- Kritischer Treffer verursacht 1.75x Schaden
+local DAMAGE_FEEDBACK_RADIUS = 250 -- Nur Spieler in diesem Umkreis erhalten Schadens-Feedback (Zahlen, Funken, Sounds)
 
 local ARENA_CENTER = Vector3.new(0, 500, 25000)
 local ARENA_RADIUS = 60
@@ -156,40 +165,29 @@ local function ensureArenaExists(): Folder
 	return arena
 end
 
--- Zeigt schwebende Schadenszahlen über dem Boss an
-local function showDamageNumber(position: Vector3, damage: number)
-	local part = Instance.new("Part")
-	part.Size = Vector3.new(1, 1, 1)
-	part.Position = position + Vector3.new(math.random(-2, 2), 3, math.random(-2, 2))
-	part.Transparency = 1
-	part.Anchored = true
-	part.CanCollide = false
-	part.Parent = Workspace
+-- Sendet ein schlankes EntityDamaged-RemoteEvent an alle Spieler in der Nähe des Einschlags.
+-- Der Client erzeugt daraus juicige, federnde Schadenszahlen, Funken & Treffersounds (Null-Latenz-Design).
+--   targetKind: "Boss" | "Player" | "Minion" - bestimmt auf dem Client den Material-Sound (Stein/Fleisch)
+--   victim:     optionaler Spieler, der den Schaden EINGESTECKT hat (erhält alarmierend rote Zahlen)
+local function broadcastDamageFeedback(position: Vector3, damage: number, isCrit: boolean, targetKind: string, victim: Player?)
+	for _, player in Players:GetPlayers() do
+		local char = player.Character
+		local root = if char then char:FindFirstChild("HumanoidRootPart") :: BasePart? else nil
+		if not root then
+			continue
+		end
+		if (root.Position - position).Magnitude > DAMAGE_FEEDBACK_RADIUS then
+			continue
+		end
 
-	local billboard = Instance.new("BillboardGui")
-	billboard.Size = UDim2.new(0, 80, 0, 36)
-	billboard.AlwaysOnTop = true
-	billboard.Parent = part
+		local isLocalPlayerVictim = (victim ~= nil and player == victim)
+		EntityDamagedEvent:FireClient(player, position, damage, isCrit, isLocalPlayerVictim, targetKind)
+	end
+end
 
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, 0, 1, 0)
-	label.BackgroundTransparency = 1
-	label.Text = string.format("-%d", damage)
-	label.TextColor3 = Color3.fromRGB(255, 100, 50)
-	label.Font = Enum.Font.GothamBlack
-	label.TextScaled = true
-	label.Parent = billboard
-
-	-- Float & Fade Out
-	local tween = TweenService:Create(
-		part,
-		TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ Position = part.Position + Vector3.new(0, 4, 0) }
-	)
-	tween:Play()
-	tween.Completed:Connect(function()
-		part:Destroy()
-	end)
+-- Öffentliche API (für andere Services wie DefenseService): Treffer-Feedback an nahe Spieler replizieren
+function BossService.BroadcastDamageFeedback(position: Vector3, damage: number, isCrit: boolean, targetKind: string, victim: Player?)
+	broadcastDamageFeedback(position, damage, isCrit, targetKind, victim)
 end
 
 -- Aktualisiert den Boss-Lebensbalken
@@ -446,6 +444,9 @@ local function spawnGolemModel(): Model
 	isBossAlive = true
 	isBossDying = false
 
+	-- Tiefes Monsterbrüllen beim Erwachen des Wald-Golems (3D mit Distanzdämpfung)
+	AudioConfig.PlayTag("BossRoar", head)
+
 	return model
 end
 
@@ -560,6 +561,9 @@ local function handleBossDefeated(killer: Player?)
 		-- 🎉 Celebration-Event für das +Gold-Popup auf dem Client (wie im Pitch-Video)
 		BossDefeatedEvent:FireClient(killer, "ForestGolemCore", goldReward)
 
+		-- Floating "+XX Gold"-Popup über dem Charakter + Münzklingeln & Goldflash (Phase 2)
+		GoldGainedEvent:FireClient(killer, goldReward, "Boss")
+
 		NotificationEvent:FireClient(
 			killer,
 			string.format("🏆 Wald-Golem besiegt! +%d Gold & 'Wald-Golem Kern' erhalten!", goldReward),
@@ -620,6 +624,12 @@ local function executeTelegraphedAttack(targetPos: Vector3)
 
 	BossTelegraphEvent:FireAllClients(targetPos, radius, duration)
 
+	-- Der Golem brüllt seinen Slam an (3D-Audio, bevor der Schlag einschlägt)
+	local telegraphHead = if currentBossModel then currentBossModel:FindFirstChild("Head") :: BasePart? else nil
+	if telegraphHead then
+		AudioConfig.PlaySound(AudioConfig.Sounds.BossRoar.Id, 0.85, 0.14, telegraphHead)
+	end
+
 	-- Telegraph-Dauer abwarten (Zeit zum Ausweichen per Dash!)
 	task.wait(duration)
 
@@ -639,12 +649,23 @@ local function executeTelegraphedAttack(targetPos: Vector3)
 	shockwave.CanCollide = false
 	shockwave.Parent = Workspace
 
-	-- Wuchtiger Einschlag-Sound
-	local slamSound = Instance.new("Sound")
-	slamSound.SoundId = "rbxassetid://138090596"
-	slamSound.Volume = 1.0
-	slamSound.Parent = shockwave
-	slamSound:Play()
+	-- Wuchtiger Einschlag-Sound über einen langlebigeren Audio-Anker (überlebt die kurze Shockwave-Optik)
+	local audioAnchor = Instance.new("Part")
+	audioAnchor.Name = "SlamAudioAnchor"
+	audioAnchor.Size = Vector3.new(0.2, 0.2, 0.2)
+	audioAnchor.Position = shockwave.Position
+	audioAnchor.Transparency = 1
+	audioAnchor.Anchored = true
+	audioAnchor.CanCollide = false
+	audioAnchor.CanQuery = false
+	audioAnchor.CanTouch = false
+	audioAnchor.CastShadow = false
+	audioAnchor.Parent = Workspace
+	local slamSound = AudioConfig.PlayTag("BossSlamImpact", audioAnchor)
+	slamSound.Ended:Once(function()
+		audioAnchor:Destroy()
+	end)
+	Debris:AddItem(audioAnchor, 5) -- Sicherheitsnetz, falls das Asset nicht (rechtzeitig) lädt
 
 	local shockTween = TweenService:Create(
 		shockwave,
@@ -664,6 +685,8 @@ local function executeTelegraphedAttack(targetPos: Vector3)
 				local dist = (Vector2.new(root.Position.X, root.Position.Z) - Vector2.new(targetPos.X, targetPos.Z)).Magnitude
 				if dist <= radius then
 					hum:TakeDamage(config.AttackDamage)
+					-- Eingesteckter Schaden: Alarmierend rote Schadenszahl über dem Getroffenen
+					broadcastDamageFeedback(root.Position, config.AttackDamage, false, "Player", player)
 					NotificationEvent:FireClient(player, string.format("💥 Vom Bodenschlag getroffen! (-%d HP)", config.AttackDamage), true)
 				end
 			end
@@ -826,6 +849,10 @@ local function setupAttackHandler()
 		local itemConfig = ItemConfig[weaponId]
 		local weaponDamage = if itemConfig and itemConfig.Damage then itemConfig.Damage else 25
 
+		-- Kritischer Treffer (server-autoritär gewürfelt): 20% Chance auf 1.75x Schaden
+		local isCrit = math.random() < CRIT_CHANCE
+		local damage = if isCrit then math.max(1, math.floor(weaponDamage * CRIT_MULTIPLIER + 0.5)) else weaponDamage
+
 		-- 1. Prüfe auf Boss in Reichweite (Arena, großzügiger Trefferradius von 30 Studs)
 		local hitBoss = false
 		if isBossAlive and currentBossModel and currentBossHumanoid and currentBossHumanoid.Health > 0 then
@@ -835,16 +862,10 @@ local function setupAttackHandler()
 				local dy = math.abs(root.Position.Y - bossRoot.Position.Y)
 				if flatDist <= 30 and dy <= 28 then
 					hitBoss = true
-					currentBossHumanoid:TakeDamage(weaponDamage)
-					showDamageNumber(bossRoot.Position, weaponDamage)
+					currentBossHumanoid:TakeDamage(damage)
 
-					-- Audio-Feedback beim Treffen des Bosses
-					local hitSound = Instance.new("Sound")
-					hitSound.SoundId = "rbxassetid://566593606"
-					hitSound.Volume = 0.8
-					hitSound.Parent = bossRoot
-					hitSound:Play()
-					Debris:AddItem(hitSound, 1.2)
+					-- Client-Juice: Schadenszahl, Funken & Steintreffer-Sound (an alle nahen Spieler)
+					broadcastDamageFeedback(bossRoot.Position, damage, isCrit, "Boss")
 
 					updateBossHealthUI(currentBossHumanoid.Health, currentBossHumanoid.MaxHealth)
 
@@ -882,8 +903,8 @@ local function setupAttackHandler()
 			end
 
 			if closestEnemy and closestHum and closestRoot then
-				closestHum.Health = math.max(0, closestHum.Health - weaponDamage)
-				showDamageNumber(closestRoot.Position, weaponDamage)
+				closestHum.Health = math.max(0, closestHum.Health - damage)
+				broadcastDamageFeedback(closestRoot.Position, damage, isCrit, "Player", closestEnemy)
 
 				if closestHum.Health <= 0 then
 					NotificationEvent:FireClient(player, string.format("⚔️ Du hast %s besiegt!", closestEnemy.DisplayName), false)
@@ -902,8 +923,8 @@ local function setupAttackHandler()
 								if mHum and mRoot and mHum.Health > 0 then
 									local dist = (root.Position - mRoot.Position).Magnitude
 									if dist <= 14 then
-										mHum.Health = math.max(0, mHum.Health - weaponDamage)
-										showDamageNumber(mRoot.Position, weaponDamage)
+										mHum.Health = math.max(0, mHum.Health - damage)
+										broadcastDamageFeedback(mRoot.Position, damage, isCrit, "Minion")
 										break
 									end
 								end

@@ -19,8 +19,18 @@ local Services = Server:WaitForChild("Services")
 local DataManagerModule = Services:WaitForChild("DataManager") :: ModuleScript
 local DataManager = require(DataManagerModule)
 
+-- Combat-Feedback (Schadenszahlen, Funken, Sounds) kommt aus dem BossService (Lazy-Require gegen Ladezyklen)
+local BossService: any = nil
+local function getBossService(): any
+	if not BossService then
+		BossService = require(Services:WaitForChild("BossService") :: ModuleScript)
+	end
+	return BossService
+end
+
 local NotificationEvent = EventsFolder:WaitForChild("ShowNotification") :: RemoteEvent
 local GoldUpdatedEvent = EventsFolder:WaitForChild("GoldUpdated") :: RemoteEvent
+local GoldGainedEvent = EventsFolder:WaitForChild("GoldGained") :: RemoteEvent
 
 local DefenseService = {}
 local isInitialized = false
@@ -500,7 +510,10 @@ function DefenseService.CreateSecuringAltar(plotModel: Model, relativePos: Vecto
 
 		-- Sofort-Gold: 150 * Level
 		local goldGain = 150 * coreLevel
-		DataManager.AddGold(player, goldGain)
+		if DataManager.AddGold(player, goldGain) then
+			-- Client-Juice (Phase 2): Majestätischer Gong, "+XX Gold"-Popup, Münzklingeln & Goldflash
+			GoldGainedEvent:FireClient(player, goldGain, "Altar")
+		end
 
 		-- Trägerstatus über RaidService beenden (Visuals entfernen)
 		local ServicesMod = ServerScriptService:WaitForChild("Server"):WaitForChild("Services")
@@ -643,6 +656,9 @@ local function startMinionAILoop()
 							-- Schaden zufügen
 							local damage = 15
 							targetHum:TakeDamage(damage)
+
+							-- Eingesteckter Schaden: rote Schadenszahl + Hit-Feedback beim Opfer (Phase 2)
+							getBossService().BroadcastDamageFeedback(targetRoot.Position, damage, false, "Player", closestEnemy)
 
 							-- Schlag-Effekt (Schwung)
 							local axe = model:FindFirstChild("MinionAxe") :: BasePart?

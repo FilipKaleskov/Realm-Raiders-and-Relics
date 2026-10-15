@@ -139,11 +139,11 @@ Realm-Raiders-and-Relics/
   - [x] Verteidigungs-Shop (Weitere Stachelfallen & Minions kaufen)
   - [x] In-World 3D-Schmiede auf der zentralen Allee (Amboss, glühendes Eisen, Glutofen)
   - [x] Dynamische Waffen-Klingenschwünge (Farben & Cooldowns nach Waffe)
-- [ ] **Nächster Fokus: Phase 2 (Audio & Game Feel):**
-  - [ ] Sound-Effekte (Klingen, Treffer, Münzen, Sirene, Boss-Roar)
-  - [ ] Floating Damage Numbers (`-25`, `CRIT!`)
-  - [ ] Floating Coin-Pickup Popups
-- [ ] **Phase 3 (Mobile Support):**
+- [x] **Phase 2: Audio & Game Feel (Abgeschlossen):**
+  - [x] Sound-Effekte (Klingen, Treffer, Münzen, Sirene, Boss-Roar)
+  - [x] Floating Damage Numbers (`-25`, `CRIT!`)
+  - [x] Floating Coin-Pickup Popups
+- [ ] **Nächster Fokus: Phase 3 (Mobile Support):**
   - [ ] On-Screen Touch Buttons (Angriff, Dash, Sprint)
   - [ ] Mobile-optimierte Prompts & Interaktionen
 - [ ] **Phase 4 (Content Expansion):**

@@ -20,11 +20,13 @@ local function ensureRemoteEvents(): Folder
 
 	local remoteNames = {
 		"GoldUpdated",
+		"GoldGained",
 		"ShowNotification",
 		"DimensionChanged",
 		"BossUpdated",
 		"BossDefeated",
 		"BaseIntruded",
+		"EntityDamaged",
 		"InventoryUpdated",
 		"RequestInventory",
 		"AttackIntent",

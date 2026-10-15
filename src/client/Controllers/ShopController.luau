@@ -105,8 +105,15 @@ local function renderTabContent()
 	end
 
 	local yOffset = 0
-	local CARD_HEIGHT = 88
+	-- Einheitliches Karten-Layout aller Tabs: 3 Info-Zeilen (Titel / Details / Kosten),
+	-- wobei die Detailzeile über 2 Zeilen umbrechen darf statt abgeschnitten zu werden.
+	local CARD_HEIGHT = 92
 	local CARD_SPACING = 8
+
+	-- Info-Block-Geometrie: Der Text beginnt bei x=84 und darf den Platz bis kurz vor dem
+	-- rechten Action-Button (Breite 150px) nutzen - kein hartes Abschneiden mehr.
+	local INFO_X = 84
+	local INFO_WIDTH_OFFSET = 242 -- 84 (links) + 150 (Action-Button) + 8 (Abstand)
 
 	-- =========================================================
 	-- TAB 1: WAFFEN
@@ -130,7 +137,7 @@ local function renderTabContent()
 			local hasEnoughMats = true
 			local costTextParts = {}
 			if costGold > 0 then
-				table.insert(costTextParts, string.format("🪙 %d Gold", costGold))
+				table.insert(costTextParts, string.format("💰 %d Gold", costGold))
 			end
 			for matKey, reqAmount in pairs(costMats) do
 				local currentAmt = cachedInventory.Materials[matKey] or 0
@@ -188,40 +195,44 @@ local function renderTabContent()
 			-- Info Block (Titel & Seltenheit)
 			local nameLabel = Instance.new("TextLabel")
 			nameLabel.Name = "WeaponName"
-			nameLabel.Size = UDim2.new(0, 220, 0, 22)
-			nameLabel.Position = UDim2.new(0, 84, 0, 12)
+			nameLabel.Size = UDim2.new(1, -INFO_WIDTH_OFFSET, 0, 22)
+			nameLabel.Position = UDim2.new(0, INFO_X, 0, 12)
 			nameLabel.BackgroundTransparency = 1
 			nameLabel.Text = itemInfo.DisplayName
 			nameLabel.Font = Enum.Font.GothamBlack
 			nameLabel.TextSize = 16
 			nameLabel.TextColor3 = itemInfo.RarityColor or Color3.fromRGB(255, 255, 255)
 			nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+			nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
 			nameLabel.Parent = card
 
-			-- Stats & Cooldown
+			-- Stats & Cooldown (bricht bei langen Werten um, statt abgeschnitten zu werden)
 			local statsLabel = Instance.new("TextLabel")
 			statsLabel.Name = "Stats"
-			statsLabel.Size = UDim2.new(0, 220, 0, 18)
-			statsLabel.Position = UDim2.new(0, 84, 0, 36)
+			statsLabel.Size = UDim2.new(1, -INFO_WIDTH_OFFSET, 0, 28)
+			statsLabel.Position = UDim2.new(0, INFO_X, 0, 34)
 			statsLabel.BackgroundTransparency = 1
 			statsLabel.Text = string.format("💥 %s", itemInfo.DetailedStats or itemInfo.StatsText)
 			statsLabel.Font = Enum.Font.GothamMedium
 			statsLabel.TextSize = 12
 			statsLabel.TextColor3 = Color3.fromRGB(220, 225, 235)
 			statsLabel.TextXAlignment = Enum.TextXAlignment.Left
+			statsLabel.TextYAlignment = Enum.TextYAlignment.Top
+			statsLabel.TextWrapped = true
 			statsLabel.Parent = card
 
 			-- Kosten-Zeile
 			local costLabel = Instance.new("TextLabel")
 			costLabel.Name = "CostLabel"
-			costLabel.Size = UDim2.new(0, 220, 0, 18)
-			costLabel.Position = UDim2.new(0, 84, 0, 56)
+			costLabel.Size = UDim2.new(1, -INFO_WIDTH_OFFSET, 0, 18)
+			costLabel.Position = UDim2.new(0, INFO_X, 0, 64)
 			costLabel.BackgroundTransparency = 1
 			costLabel.Text = if isOwned then "✓ Bereits freigeschaltet" else table.concat(costTextParts, "  •  ")
 			costLabel.Font = Enum.Font.GothamBold
 			costLabel.TextSize = 11
 			costLabel.TextColor3 = if isOwned then Color3.fromRGB(46, 204, 113) else (if canAfford then Color3.fromRGB(255, 215, 60) else Color3.fromRGB(255, 100, 100))
 			costLabel.TextXAlignment = Enum.TextXAlignment.Left
+			costLabel.TextTruncate = Enum.TextTruncate.AtEnd
 			costLabel.Parent = card
 
 			-- Action Button (Rechts)
@@ -300,7 +311,7 @@ local function renderTabContent()
 
 			local hasEnoughGold = (cachedGold >= costGold)
 			local hasEnoughMats = true
-			local costTextParts = { string.format("🪙 %d Gold", costGold) }
+			local costTextParts = { string.format("💰 %d Gold", costGold) }
 			for matKey, reqAmount in pairs(costMats) do
 				local currentAmt = cachedInventory.Materials[matKey] or 0
 				local matInfo = ItemConfig[matKey]
@@ -354,36 +365,40 @@ local function renderTabContent()
 
 			-- Info Block
 			local nameLabel = Instance.new("TextLabel")
-			nameLabel.Size = UDim2.new(0, 220, 0, 22)
-			nameLabel.Position = UDim2.new(0, 84, 0, 12)
+			nameLabel.Size = UDim2.new(1, -INFO_WIDTH_OFFSET, 0, 22)
+			nameLabel.Position = UDim2.new(0, INFO_X, 0, 12)
 			nameLabel.BackgroundTransparency = 1
 			nameLabel.Text = string.format("%s (%d/%d)", defInfo.DisplayName, currentCount, defInfo.MaxCount)
 			nameLabel.Font = Enum.Font.GothamBlack
 			nameLabel.TextSize = 16
 			nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 			nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+			nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
 			nameLabel.Parent = card
 
 			local statsLabel = Instance.new("TextLabel")
-			statsLabel.Size = UDim2.new(0, 220, 0, 18)
-			statsLabel.Position = UDim2.new(0, 84, 0, 36)
+			statsLabel.Size = UDim2.new(1, -INFO_WIDTH_OFFSET, 0, 28)
+			statsLabel.Position = UDim2.new(0, INFO_X, 0, 34)
 			statsLabel.BackgroundTransparency = 1
 			statsLabel.Text = defInfo.StatsText
 			statsLabel.Font = Enum.Font.GothamMedium
 			statsLabel.TextSize = 12
 			statsLabel.TextColor3 = Color3.fromRGB(220, 225, 235)
 			statsLabel.TextXAlignment = Enum.TextXAlignment.Left
+			statsLabel.TextYAlignment = Enum.TextYAlignment.Top
+			statsLabel.TextWrapped = true
 			statsLabel.Parent = card
 
 			local costLabel = Instance.new("TextLabel")
-			costLabel.Size = UDim2.new(0, 220, 0, 18)
-			costLabel.Position = UDim2.new(0, 84, 0, 56)
+			costLabel.Size = UDim2.new(1, -INFO_WIDTH_OFFSET, 0, 18)
+			costLabel.Position = UDim2.new(0, INFO_X, 0, 64)
 			costLabel.BackgroundTransparency = 1
 			costLabel.Text = if isMax then "✓ Maximum auf Basis erreicht" else table.concat(costTextParts, "  •  ")
 			costLabel.Font = Enum.Font.GothamBold
 			costLabel.TextSize = 11
 			costLabel.TextColor3 = if isMax then Color3.fromRGB(46, 204, 113) else (if canAfford then Color3.fromRGB(255, 215, 60) else Color3.fromRGB(255, 100, 100))
 			costLabel.TextXAlignment = Enum.TextXAlignment.Left
+			costLabel.TextTruncate = Enum.TextTruncate.AtEnd
 			costLabel.Parent = card
 
 			-- Button
@@ -483,36 +498,41 @@ local function renderTabContent()
 
 			-- Info Block
 			local nameLabel = Instance.new("TextLabel")
-			nameLabel.Size = UDim2.new(0, 220, 0, 22)
-			nameLabel.Position = UDim2.new(0, 84, 0, 12)
+			nameLabel.Size = UDim2.new(1, -INFO_WIDTH_OFFSET, 0, 20)
+			nameLabel.Position = UDim2.new(0, INFO_X, 0, 12)
 			nameLabel.BackgroundTransparency = 1
 			nameLabel.Text = string.format("Statuen-Sockel %d", slotIndex)
 			nameLabel.Font = Enum.Font.GothamBlack
 			nameLabel.TextSize = 16
 			nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 			nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+			nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
 			nameLabel.Parent = card
 
+			-- Beschreibung: bricht über zwei Zeilen um, statt am Rand abgeschnitten zu werden
 			local descLabel = Instance.new("TextLabel")
-			descLabel.Size = UDim2.new(0, 220, 0, 18)
-			descLabel.Position = UDim2.new(0, 84, 0, 36)
+			descLabel.Size = UDim2.new(1, -INFO_WIDTH_OFFSET, 0, 28)
+			descLabel.Position = UDim2.new(0, INFO_X, 0, 34)
 			descLabel.BackgroundTransparency = 1
 			descLabel.Text = if unlockInfo then unlockInfo.Description else "Zusätzlicher Platz für Boss-Statuen"
 			descLabel.Font = Enum.Font.GothamMedium
 			descLabel.TextSize = 11
 			descLabel.TextColor3 = Color3.fromRGB(220, 225, 235)
 			descLabel.TextXAlignment = Enum.TextXAlignment.Left
+			descLabel.TextYAlignment = Enum.TextYAlignment.Top
+			descLabel.TextWrapped = true
 			descLabel.Parent = card
 
 			local costLabel = Instance.new("TextLabel")
-			costLabel.Size = UDim2.new(0, 220, 0, 18)
-			costLabel.Position = UDim2.new(0, 84, 0, 56)
+			costLabel.Size = UDim2.new(1, -INFO_WIDTH_OFFSET, 0, 18)
+			costLabel.Position = UDim2.new(0, INFO_X, 0, 64)
 			costLabel.BackgroundTransparency = 1
-			costLabel.Text = if isUnlocked then "✓ Aktiv auf deiner Basis" else string.format("Kosten: 🪙 %d Gold", costGold)
+			costLabel.Text = if isUnlocked then "✓ Aktiv auf deiner Basis" else string.format("Kosten: 💰 %d Gold", costGold)
 			costLabel.Font = Enum.Font.GothamBold
 			costLabel.TextSize = 11
 			costLabel.TextColor3 = if isUnlocked then Color3.fromRGB(46, 204, 113) else (if canAfford then Color3.fromRGB(255, 215, 60) else Color3.fromRGB(255, 100, 100))
 			costLabel.TextXAlignment = Enum.TextXAlignment.Left
+			costLabel.TextTruncate = Enum.TextTruncate.AtEnd
 			costLabel.Parent = card
 
 			-- Button

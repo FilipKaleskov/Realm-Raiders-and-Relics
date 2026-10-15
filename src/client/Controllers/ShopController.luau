@@ -724,6 +724,10 @@ local function createShopUI()
 	closeBtn.Position = UDim2.new(1, -44, 0.5, 0)
 	closeBtn.AnchorPoint = Vector2.new(0, 0.5)
 	closeBtn.ZIndex = header.ZIndex + 2
+	-- Phase 3 (Mobile): Mindest-Touchfläche von 44x44px auf Touch-Geräten
+	if UserInputService.TouchEnabled and closeBtn.Size.Y.Offset < 44 then
+		closeBtn.Size = UDim2.new(0, 44, 0, 44)
+	end
 	closeBtn.MouseButton1Click:Connect(function()
 		ShopController.CloseShop()
 	end)

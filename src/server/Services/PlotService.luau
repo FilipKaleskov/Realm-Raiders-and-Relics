@@ -568,6 +568,7 @@ local function setupPedestalPrompts(pedestal: Instance, player: Player, slotInde
 		unlockPrompt.HoldDuration = 0.5
 		unlockPrompt.MaxActivationDistance = 12
 		unlockPrompt.RequiresLineOfSight = false
+		unlockPrompt.ClickablePrompt = true -- Phase 3 (Mobile): Sockel-Freischaltung per Daumentipp
 		unlockPrompt.Exclusivity = Enum.ProximityPromptExclusivity.OnePerButton
 		unlockPrompt:SetAttribute("OwnerUserId", player.UserId)
 		unlockPrompt.Parent = centerAtt
@@ -598,6 +599,7 @@ local function setupPedestalPrompts(pedestal: Instance, player: Player, slotInde
 		upgradePrompt.HoldDuration = 0.5
 		upgradePrompt.MaxActivationDistance = 12
 		upgradePrompt.RequiresLineOfSight = false
+		upgradePrompt.ClickablePrompt = true -- Phase 3 (Mobile): Seelenkern-Upgrade per Daumentipp
 		upgradePrompt.Exclusivity = Enum.ProximityPromptExclusivity.OnePerButton
 		upgradePrompt:SetAttribute("OwnerUserId", player.UserId)
 		upgradePrompt.Parent = leftAtt
@@ -636,6 +638,7 @@ local function setupPedestalPrompts(pedestal: Instance, player: Player, slotInde
 		removePrompt.HoldDuration = 1.0
 		removePrompt.MaxActivationDistance = 12
 		removePrompt.RequiresLineOfSight = false
+		removePrompt.ClickablePrompt = true -- Phase 3 (Mobile): Kern entfernen per Daumentipp
 		removePrompt.Exclusivity = Enum.ProximityPromptExclusivity.OnePerButton
 		removePrompt:SetAttribute("OwnerUserId", player.UserId)
 		removePrompt.Parent = rightAtt
@@ -677,6 +680,7 @@ local function setupPedestalPrompts(pedestal: Instance, player: Player, slotInde
 		stealPrompt.MaxActivationDistance = 12
 		stealPrompt.RequiresLineOfSight = false
 		stealPrompt.Exclusivity = Enum.ProximityPromptExclusivity.OnePerButton
+		stealPrompt.ClickablePrompt = true -- Phase 3 (Mobile): Kern-Diebstahl per Daumentipp (3.5s Halten)
 		stealPrompt:SetAttribute("OwnerUserId", player.UserId)
 		stealPrompt.Parent = centerAtt
 
@@ -712,6 +716,7 @@ local function setupPedestalPrompts(pedestal: Instance, player: Player, slotInde
 		placePrompt.HoldDuration = 0.5
 		placePrompt.MaxActivationDistance = 12
 		placePrompt.RequiresLineOfSight = false
+		placePrompt.ClickablePrompt = true -- Phase 3 (Mobile): Kern platzieren per Daumentipp
 		placePrompt.Exclusivity = Enum.ProximityPromptExclusivity.OnePerButton
 		placePrompt:SetAttribute("OwnerUserId", player.UserId)
 		placePrompt.Parent = centerAtt
@@ -919,6 +924,7 @@ local function attachClaimPromptToSignPost(signPost: BasePart, plotIndex: number
 	claimPrompt.HoldDuration = 0.5
 	claimPrompt.MaxActivationDistance = 14
 	claimPrompt.RequiresLineOfSight = false
+	claimPrompt.ClickablePrompt = true -- Phase 3 (Mobile): Plot-Beanspruchung per Daumentipp
 	claimPrompt.Parent = signPost
 
 	claimPrompt.Triggered:Connect(function(triggeringPlayer: Player)
@@ -1062,6 +1068,7 @@ local function setupTestRaidPlot(plot: Model)
 		stealPrompt.HoldDuration = 3.5
 		stealPrompt.MaxActivationDistance = 14
 		stealPrompt.RequiresLineOfSight = false
+		stealPrompt.ClickablePrompt = true -- Phase 3 (Mobile): Rivale-NPC-Diebstahl per Daumentipp
 		stealPrompt:SetAttribute("OwnerUserId", 999999)
 		stealPrompt.Parent = centerAtt
 

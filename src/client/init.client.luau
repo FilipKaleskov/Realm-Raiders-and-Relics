@@ -17,6 +17,9 @@ local PlotSelectionController = require(PlotSelectionControllerModule)
 local ShopControllerModule = Controllers:WaitForChild("ShopController") :: ModuleScript
 local ShopController = require(ShopControllerModule)
 
+local MobileControlsControllerModule = Controllers:WaitForChild("MobileControlsController") :: ModuleScript
+local MobileControlsController = require(MobileControlsControllerModule)
+
 -- Client-Controller starten
 HUDController.Init()
 CombatController.Init()
@@ -24,4 +27,8 @@ MovementController.Init()
 PlotSelectionController.Init()
 ShopController.Init()
 
-print("[Client] Realm Raiders Client (HUD, Combat, Movement, PlotSelection & Shop) erfolgreich gebootet.")
+-- Phase 3 (Mobile & Touch-Support): erstellt das Touch-Cluster NUR auf Geräten mit
+-- Touchscreen. CombatController & MovementController müssen vorher initialisiert sein.
+MobileControlsController.Init()
+
+print("[Client] Realm Raiders Client (HUD, Combat, Movement, PlotSelection, Shop & MobileControls) erfolgreich gebootet.")

@@ -488,6 +488,8 @@ function DefenseService.CreateSecuringAltar(plotModel: Model, relativePos: Vecto
 	prompt.HoldDuration = 1.2
 	prompt.MaxActivationDistance = 14
 	prompt.RequiresLineOfSight = false
+	-- Phase 3 (Mobile): Schmelz-Altar per Daumentipp aktivierbar
+	prompt.ClickablePrompt = true
 	local plotOwnerId = ownerUserId or (plotModel:GetAttribute("OwnerUserId") :: number?) or 0
 	prompt:SetAttribute("OwnerUserId", plotOwnerId)
 	prompt.Parent = fireCore

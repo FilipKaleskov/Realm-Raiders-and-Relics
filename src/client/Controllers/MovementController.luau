@@ -244,6 +244,22 @@ local function showBaseIntrudedBanner(thiefName: string?, coreName: string?)
 	end)
 end
 
+-- ==========================================
+-- PHASE 3: SPRINT-ZUSTANDS-BEOBACHTER (für den mobilen Sprint-Toggle-Button)
+-- Der MobileControlsController reagiert damit ohne Polling auf Sprint- & Walk-of-Shame-Änderungen.
+-- ==========================================
+export type SprintStateListener = (isSprinting: boolean, isLocked: boolean) -> ()
+
+local sprintListeners: { [SprintStateListener]: boolean } = {}
+
+-- Meldet allen Beobachtern den aktuellen Zustand (Sprinten an/aus + Walk-of-Shame-Sperre)
+local function fireSprintStateChanged()
+	local locked = isCarryingCore()
+	for listener in pairs(sprintListeners) do
+		task.spawn(listener, isSprinting, locked)
+	end
+end
+
 -- Startet das Sprinten
 local function startSprint()
 	if isCarryingCore() then
@@ -251,10 +267,12 @@ local function startSprint()
 			lastWarnTime = os.clock()
 			NotificationEvent:Fire("❌ Kein Sprinten möglich, während du einen Seelenkern trägst!", true)
 		end
+		fireSprintStateChanged()
 		return
 	end
 
 	if not currentHumanoid or currentHumanoid.Health <= 0 then
+		fireSprintStateChanged()
 		return
 	end
 
@@ -262,6 +280,7 @@ local function startSprint()
 	currentHumanoid.WalkSpeed = SPRINT_WALK_SPEED
 	setCameraFOV(SPRINT_FOV)
 	setRunningPuffs(true)
+	fireSprintStateChanged()
 end
 
 -- Beendet das Sprinten
@@ -271,6 +290,7 @@ local function stopSprint()
 
 	if not currentHumanoid or currentHumanoid.Health <= 0 then
 		setCameraFOV(DEFAULT_FOV)
+		fireSprintStateChanged()
 		return
 	end
 
@@ -280,6 +300,7 @@ local function stopSprint()
 		currentHumanoid.WalkSpeed = DEFAULT_WALK_SPEED
 	end
 	setCameraFOV(DEFAULT_FOV)
+	fireSprintStateChanged()
 end
 
 -- Bindet Humanoid des Spieler-Charakters
@@ -302,65 +323,45 @@ local function hookHumanoid(character: Model)
 	hum.Died:Connect(function()
 		isSprinting = false
 		setCameraFOV(DEFAULT_FOV)
+		fireSprintStateChanged()
 	end)
+
+	fireSprintStateChanged()
 end
 
--- Erstellt einen Touch-Sprint-Button für Mobilgeräte
-local function setupMobileSprintButton()
-	if not UserInputService.TouchEnabled then
-		return
+-- ==========================================
+-- PHASE 3: ÖFFENTLICHE SPRINT-API (Tastatur, Gamepad UND Touch)
+-- ==========================================
+
+-- Registriert einen Beobachter für Sprint-Änderungen und liefert eine Abmelde-Funktion.
+-- Der Beobachter erhält sofort einmal den aktuellen Zustand (isSprinting, isLocked).
+function MovementController.ObserveSprintState(listener: SprintStateListener): () -> ()
+	sprintListeners[listener] = true
+	listener(isSprinting, isCarryingCore())
+	return function()
+		sprintListeners[listener] = nil
 	end
+end
 
-	local playerGui = LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui
-	local screenGui = playerGui:FindFirstChild("MobileSprintGui") :: ScreenGui?
-	if not screenGui then
-		screenGui = Instance.new("ScreenGui")
-		screenGui.Name = "MobileSprintGui"
-		screenGui.ResetOnSpawn = false
-		screenGui.DisplayOrder = 10
-		screenGui.Parent = playerGui
+-- Schaltet das Sprinten um (mobiler Touch-Button, Gamepad L3 oder Tastatur-Shift).
+-- Rückgabe: true, wenn danach tatsächlich gesprintet wird.
+function MovementController.ToggleSprint(): boolean
+	if isSprinting then
+		stopSprint()
+		return isSprinting
 	end
+	startSprint()
+	return isSprinting
+end
 
-	local sprintBtn = Instance.new("ImageButton")
-	sprintBtn.Name = "MobileSprintButton"
-	sprintBtn.Size = UDim2.new(0, 58, 0, 58)
-	sprintBtn.Position = UDim2.new(1, -85, 1, -155)
-	sprintBtn.BackgroundColor3 = Color3.fromRGB(26, 44, 52)
-	sprintBtn.BorderSizePixel = 0
-	sprintBtn.AutoButtonColor = false
-	sprintBtn.Parent = screenGui
+-- true, wenn der Spieler gerade sprintet
+function MovementController.IsSprinting(): boolean
+	return isSprinting
+end
 
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 29)
-	corner.Parent = sprintBtn
-
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(180, 255, 25)
-	stroke.Thickness = 2.4
-	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	stroke.Parent = sprintBtn
-
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, 0, 1, 0)
-	label.BackgroundTransparency = 1
-	label.Text = "🏃"
-	label.TextSize = 28
-	label.Font = Enum.Font.GothamBlack
-	label.Parent = sprintBtn
-
-	local touchActive = false
-	sprintBtn.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.Touch then
-			touchActive = not touchActive
-			if touchActive then
-				sprintBtn.BackgroundColor3 = Color3.fromRGB(105, 225, 0)
-				startSprint()
-			else
-				sprintBtn.BackgroundColor3 = Color3.fromRGB(26, 44, 52)
-				stopSprint()
-			end
-		end
-	end)
+-- Walk of Shame: Mit einem gestohlenen Seelenkern ist Sprinten gesperrt
+function MovementController.IsSprintLocked(): boolean
+	return isCarryingCore()
 end
 
 function MovementController.Init()
@@ -413,6 +414,7 @@ function MovementController.Init()
 			-- Eigene Basis wird überfallen: BASE INTRUDED! Banner (das Banner erscheint beim OPFER)
 			-- (Die Eigenschaft CarryingCore ist auf dem DIEB, nicht dem Opfer gesetzt - deshalb
 			--  wird das Banner serverseitig via Notification/Extra-Event an das Opfer gesendet)
+			fireSprintStateChanged()
 		else
 			setRunningPuffs(false)
 			if isShiftDown then
@@ -421,6 +423,7 @@ function MovementController.Init()
 				if currentHumanoid then
 					currentHumanoid.WalkSpeed = DEFAULT_WALK_SPEED
 				end
+				fireSprintStateChanged()
 			end
 		end
 	end)
@@ -431,7 +434,9 @@ function MovementController.Init()
 		showBaseIntrudedBanner(thiefName, coreName)
 	end)
 
-	setupMobileSprintButton()
+	-- Hinweis: Der mobile Sprint-Toggle-Button wird vom MobileControlsController
+	-- (Phase 3, "RealmRaidersMobileGui") erstellt und ruft MovementController.ToggleSprint() auf.
+
 	print("[MovementController] Initialisiert: Sprinten aktiv (WalkSpeed 16 -> 26, Dynamisches FOV 70 -> 82, Raid-Sperre, RunningPuffs, BASE INTRUDED! Banner).")
 end
 

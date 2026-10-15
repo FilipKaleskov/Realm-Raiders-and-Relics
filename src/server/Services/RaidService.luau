@@ -487,6 +487,8 @@ function RaidService.DropCore(player: Player)
 	prompt.KeyboardKeyCode = Enum.KeyCode.E
 	prompt.MaxActivationDistance = 12
 	prompt.RequiresLineOfSight = false
+	-- Phase 3 (Mobile): Fallengelassenen Seelenkern per Daumentipp aufheben
+	prompt.ClickablePrompt = true
 	prompt.Parent = droppedCore
 
 	prompt.Triggered:Connect(function(picker: Player)

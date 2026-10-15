@@ -1094,6 +1094,31 @@ local function createHUD()
 		return
 	end
 
+	-- ====================================================
+	-- PHASE 3 (MOBILE): Mindest-Touchfläche von 44x44px für HUD-Buttons.
+	-- Auf Desktop (Maus/Tastatur) bleiben alle Größen exakt unverändert!
+	-- ====================================================
+	local isTouchDevice = UserInputService.TouchEnabled
+	local TOUCH_MIN_SIZE = 44
+	local smallButtonHeight = if isTouchDevice then TOUCH_MIN_SIZE else 34
+	local tabBarHeight = if isTouchDevice then TOUCH_MIN_SIZE else 34
+
+	-- Vergrößert einen Check-UI Button auf Touch-Geräten (AnchorPoint bleibt gleich,
+	-- damit die Optik verankert bleibt und das Layout nicht springt).
+	-- Wichtig: Nur reine Offset-Größen werden angehoben – Scale-basierte Achsen
+	-- (z. B. "1, 0" = volle TabBar-Höhe) bleiben unberührt.
+	local function applyTouchMinSize(guiObject: GuiObject, width: number, height: number)
+		if not isTouchDevice then
+			return
+		end
+		local current = guiObject.Size
+		local newWidthOffset = if current.X.Scale == 0 and current.X.Offset < width then width else current.X.Offset
+		local newHeightOffset = if current.Y.Scale == 0 and current.Y.Offset < height then height else current.Y.Offset
+		if newWidthOffset ~= current.X.Offset or newHeightOffset ~= current.Y.Offset then
+			guiObject.Size = UDim2.new(current.X.Scale, newWidthOffset, current.Y.Scale, newHeightOffset)
+		end
+	end
+
 	-- Haupt-ScreenGui
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "RealmRaidersHUD"
@@ -1314,7 +1339,7 @@ local function createHUD()
 	-- ----------------------------------------------------
 	local invBtn = Instance.new("TextButton")
 	invBtn.Name = "InventoryButton"
-	invBtn.Size = UDim2.new(0, 240, 0, 34)
+	invBtn.Size = UDim2.new(0, 240, 0, smallButtonHeight)
 	invBtn.Position = UDim2.new(1, -260, 0, 68)
 	invBtn.BackgroundColor3 = CheckUITheme.Colors.CardBackground
 	invBtn.BorderSizePixel = 0
@@ -1647,6 +1672,7 @@ local function createHUD()
 
 	local closeBtn = headerFrame:FindFirstChild("CloseButton") :: ImageButton?
 	if closeBtn then
+		applyTouchMinSize(closeBtn, TOUCH_MIN_SIZE, TOUCH_MIN_SIZE) -- Phase 3 (Mobile): 44x44 Touchfläche
 		closeBtn.MouseButton1Click:Connect(function()
 			HUDController.CloseInventory()
 		end)
@@ -1693,7 +1719,7 @@ local function createHUD()
 	-- Kategorie-Reiter (TabBar mit LB & RB Schultertasten-Steuerung)
 	local tabBar = Instance.new("Frame")
 	tabBar.Name = "TabBar"
-	tabBar.Size = UDim2.new(1, -36, 0, 34)
+	tabBar.Size = UDim2.new(1, -36, 0, tabBarHeight)
 	tabBar.Position = UDim2.new(0, 18, 0, 68)
 	tabBar.BackgroundTransparency = 1
 	tabBar.ZIndex = 13
@@ -1713,6 +1739,7 @@ local function createHUD()
 	lbBtn.ZIndex = 14
 	lbBtn.Parent = tabBar
 	lbTabButton = lbBtn
+	applyTouchMinSize(lbBtn, TOUCH_MIN_SIZE, TOUCH_MIN_SIZE)
 
 	local lbCorner = Instance.new("UICorner")
 	lbCorner.CornerRadius = UDim.new(0, 4)
@@ -1797,6 +1824,7 @@ local function createHUD()
 	rbBtn.ZIndex = 14
 	rbBtn.Parent = tabBar
 	rbTabButton = rbBtn
+	applyTouchMinSize(rbBtn, TOUCH_MIN_SIZE, TOUCH_MIN_SIZE)
 
 	local rbCorner = Instance.new("UICorner")
 	rbCorner.CornerRadius = UDim.new(0, 4)
@@ -1815,11 +1843,12 @@ local function createHUD()
 		switchCategoryTab(1)
 	end
 
-	-- Scrolling Grid Container
+	-- Scrolling Grid Container (verschiebt sich auf Touch-Geräten um die höhere TabBar)
+	local gridTop = 68 + tabBarHeight + 6
 	local scrollFrame = Instance.new("ScrollingFrame")
 	scrollFrame.Name = "ItemGrid"
-	scrollFrame.Size = UDim2.new(1, -36, 1, -118)
-	scrollFrame.Position = UDim2.new(0, 18, 0, 108)
+	scrollFrame.Size = UDim2.new(1, -36, 1, -(gridTop + 10))
+	scrollFrame.Position = UDim2.new(0, 18, 0, gridTop)
 	scrollFrame.BackgroundColor3 = CheckUITheme.Colors.CardBackground
 	scrollFrame.BorderSizePixel = 0
 	scrollFrame.ScrollBarThickness = 6
@@ -1939,6 +1968,7 @@ local function createHUD()
 
 	local dCloseBtn = dHeader:FindFirstChild("CloseButton") :: ImageButton?
 	if dCloseBtn then
+		applyTouchMinSize(dCloseBtn, TOUCH_MIN_SIZE, TOUCH_MIN_SIZE) -- Phase 3 (Mobile): 44x44 Touchfläche
 		dCloseBtn.MouseButton1Click:Connect(function()
 			HUDController.CloseItemDetails()
 		end)
@@ -2142,7 +2172,7 @@ local function createHUD()
 	-- Schließen-Button nach Studio-Verified Blueprint (Check-UI Tenet 11)
 	local dBottomClose = Instance.new("ImageButton")
 	dBottomClose.Name = "BottomCloseBtn"
-	dBottomClose.Size = UDim2.new(1, -28, 0, 38)
+	dBottomClose.Size = UDim2.new(1, -28, 0, if isTouchDevice then TOUCH_MIN_SIZE else 38)
 	dBottomClose.Position = UDim2.new(0, 14, 0, 300)
 	dBottomClose.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 	dBottomClose.BorderSizePixel = 0

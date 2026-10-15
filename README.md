@@ -143,9 +143,17 @@ Realm-Raiders-and-Relics/
   - [x] Sound-Effekte (Klingen, Treffer, Münzen, Sirene, Boss-Roar)
   - [x] Floating Damage Numbers (`-25`, `CRIT!`)
   - [x] Floating Coin-Pickup Popups
-- [ ] **Nächster Fokus: Phase 3 (Mobile Support):**
-  - [ ] On-Screen Touch Buttons (Angriff, Dash, Sprint)
-  - [ ] Mobile-optimierte Prompts & Interaktionen
+- [x] **Phase 3: Mobile & Touch-Support (Abgeschlossen):**
+  - [x] Zentraler `MobileControlsController` ("RealmRaidersMobileGui", DisplayOrder 15) – wird nur bei `UserInputService.TouchEnabled` erstellt
+  - [x] Mobile Action Cluster im Daumen-Bogen: ⚔️ Angriff (68x68), ⚡ Combat-Dash (58x58), 🏃 Sprint-Toggle (52x52)
+  - [x] Check-UI Standard für alle Touch-Buttons (3D-Bevel, 3.0px schwarzer UIStroke, UIGradient, Damier, GothamBlack & HD-Icons)
+  - [x] UIScale-Engine (Baseline 400px, 0.85 – 1.25) + dynamischer Sprungkopf-Sicherheitsabstand (keine Überlappung mit Roblox-Sprungknopf/Chat)
+  - [x] Dash-Cooldown-Visualisierung (abklingende Dunkelmaske + `1.2s`-Countdown)
+  - [x] Sprint-Toggle mit aktivem Limettengrün-Puls, Walk-of-Shame-Sperre inkl. Schloss-Symbol
+  - [x] Bugfix: Kamera-Wischen löst keinen Schwertschlag mehr aus (`UserInputType.Touch` aus `CombatController.onInputBegan` entfernt)
+  - [x] Öffentliche APIs: `CombatController.TriggerAttack/TriggerDash/GetDashCooldownProgress`, `MovementController.ToggleSprint/ObserveSprintState`
+  - [x] Mobile-optimierte ProximityPrompts (`ClickablePrompt = true`, großes Daumen-Ziel mit Halte-Fortschrittsbalken)
+  - [x] HUD-Touchflächen: Mindestgröße 44x44px für Inventar-/Menü-Buttons (Desktop-Layout unverändert)
 - [ ] **Phase 4 (Content Expansion):**
   - [ ] 2. Dimension (*Nether-Kluft / Magma-Ruinen*) mit Tier 2 Magma-Koloss
   - [ ] Neue Materialien (*Obsidian*, *Feuer-Essenz*) & Tier 2 Seelenkern

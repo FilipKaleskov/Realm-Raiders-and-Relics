@@ -251,6 +251,8 @@ local function createPortal(
 	prompt.HoldDuration = 0.5
 	prompt.MaxActivationDistance = 14
 	prompt.RequiresLineOfSight = false
+	-- Phase 3 (Mobile): Dimensionstor per Daumentipp aktivierbar
+	prompt.ClickablePrompt = true
 	prompt.Parent = crystal
 
 	prompt.Triggered:Connect(function(player: Player)

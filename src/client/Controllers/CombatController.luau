@@ -51,6 +51,32 @@ local function isFirstPerson(): boolean
 	return (Camera.CFrame.Position - head.Position).Magnitude < 1.4
 end
 
+-- PHASE 3: Prüft, ob ein Check-UI Menü (Schmiede-Shop, Inventar oder Item-Details) geöffnet ist.
+-- Während ein Menü offen ist, dürfen Nahkampf & Dash nicht ausgelöst werden (gilt für Maus,
+-- Tastatur, Gamepad UND Touch-Attack-Button gleichermaßen).
+local function isGameMenuOpen(): boolean
+	local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+	if not playerGui then
+		return false
+	end
+
+	-- Wichtig: Shop & Inventar liegen in ZWEI unterschiedlichen ScreenGuis!
+	local menuWindows: { { string } } = {
+		{ "RealmRaidersUI", "BlacksmithShopWindow" }, -- ShopController (Schmiede & Shop)
+		{ "RealmRaidersHUD", "InventoryModal" }, -- HUDController (Inventar)
+		{ "RealmRaidersHUD", "ItemDetailModal" }, -- HUDController (Item-Infobox)
+	}
+
+	for _, entry in menuWindows do
+		local gui = playerGui:FindFirstChild(entry[1])
+		local window = if gui then gui:FindFirstChild(entry[2]) else nil
+		if window and window:IsA("GuiObject") and window.Visible then
+			return true
+		end
+	end
+	return false
+end
+
 -- Spielt einen kleinen visuellen Schwertschwung / Screenshake + Klingen-Whoosh ab
 local function playAttackFeedback()
 	local char = LocalPlayer.Character
@@ -242,21 +268,25 @@ local function spawnBlueDashVFX()
 end
 
 -- Führt den Vorwärts-Dash aus (Physik-Impuls über BodyVelocity)
-local function executeDash()
+-- Rückgabe: true, wenn der Dash wirklich gestartet wurde (false bei Cooldown, Menü oder Walk-of-Shame)
+local function performDash(): boolean
 	local char = LocalPlayer.Character
-	if not char then return end
+	if not char then return false end
 
 	-- Kein Dash beim Walk-of-Shame
 	if LocalPlayer:GetAttribute("CarryingCore") ~= nil then
-		return
+		return false
 	end
 
 	local hum = char:FindFirstChild("Humanoid") :: Humanoid?
 	local root = char:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if not hum or not root or hum.Health <= 0 then return end
+	if not hum or not root or hum.Health <= 0 then return false end
+
+	-- Kein Dash, während ein Check-UI Menü (Shop/Inventar) offen ist
+	if isGameMenuOpen() then return false end
 
 	local now = os.clock()
-	if now - lastDashTime < DASH_COOLDOWN then return end
+	if now - lastDashTime < DASH_COOLDOWN then return false end
 	lastDashTime = now
 
 	-- Richtung: Blick-Richtung der Kamera (flach, Y=0)
@@ -295,6 +325,8 @@ local function executeDash()
 	task.delay(0.18, function()
 		bv:Destroy()
 	end)
+
+	return true
 end
 
 -- ==========================================
@@ -598,50 +630,84 @@ local function showGoldCelebration(goldAmount: number)
 	end
 end
 
--- Verarbeitet Eingaben
+-- ==========================================
+-- PHASE 3: ÖFFENTLICHE COMBAT-API (Maus, Tastatur, Gamepad UND Touch)
+-- Alle Eingabewege laufen über diese Methoden, damit Cooldown-Checks,
+-- Menü-Sperren & Feedback garantiert identisch behandelt werden.
+-- ==========================================
+
+-- Führt einen Nahkampf-Schlag aus (Cooldown-Check + Sofort-Feedback + Server-Intent).
+-- Rückgabe: true, wenn der Schlag tatsächlich ausgeführt wurde.
+function CombatController.TriggerAttack(): boolean
+	if isGameMenuOpen() then
+		return false
+	end
+
+	local now = os.clock()
+	if now - lastAttackTime < currentAttackCooldown then
+		return false
+	end
+	lastAttackTime = now
+
+	-- Client-Feedback sofort abspielen (Null Latenzgefühl)
+	playAttackFeedback()
+
+	-- Server-autoritären Angriffs-Intent senden
+	AttackIntent:FireServer()
+	return true
+end
+
+-- Führt den Combat-Dash aus (Cooldown-Check, FoV-Punch, DashWhoosh, Physik-Impuls).
+-- Rückgabe: true, wenn der Dash wirklich gestartet wurde.
+function CombatController.TriggerDash(): boolean
+	return performDash()
+end
+
+-- Verbleibender Dash-Cooldown als Fortschritt zwischen 0 und 1
+-- (0 = Dash sofort bereit, 1 = gerade gedasht -> volle Cooldown-Anzeige)
+function CombatController.GetDashCooldownProgress(): number
+	local remaining = DASH_COOLDOWN - (os.clock() - lastDashTime)
+	if remaining <= 0 then
+		return 0
+	end
+	return math.clamp(remaining / DASH_COOLDOWN, 0, 1)
+end
+
+-- Gesamtdauer des Dash-Cooldowns in Sekunden (Basis für den Touch-Countdown)
+function CombatController.GetDashCooldownDuration(): number
+	return DASH_COOLDOWN
+end
+
+-- true, wenn der Dash aktuell wieder einsatzbereit ist
+function CombatController.IsDashReady(): boolean
+	return CombatController.GetDashCooldownProgress() <= 0
+end
+
+-- true, wenn gerade ein Check-UI Menü (Shop/Inventar/Infobox) geöffnet ist
+function CombatController.IsMenuOpen(): boolean
+	return isGameMenuOpen()
+end
+
+-- Verarbeitet Maus-, Tastatur- & Gamepad-Eingaben.
+-- WICHTIG (Phase 3 Bugfix): Enum.UserInputType.Touch wird hier NICHT mehr verarbeitet!
+-- Das Berühren des leeren Bildschirms dient ausschließlich dem Drehen der Kamera.
+-- Nahkampf & Dash laufen auf Mobilgeräten ausschließlich über den dedizierten
+-- Touch-Attack-Button aus dem MobileControlsController.
 local function onInputBegan(input: InputObject, gameProcessed: boolean)
 	if gameProcessed then
 		return
 	end
 
-	-- Linksklick (Maus), Touch (Mobile) oder Taste 'F' für Angriff
+	-- Linksklick (Maus) oder Taste 'F' für Angriff
 	if input.UserInputType == Enum.UserInputType.MouseButton1
-		or input.UserInputType == Enum.UserInputType.Touch
 		or input.KeyCode == Enum.KeyCode.F then
-
-		-- Kein Angriff, wenn Menüs offen sind (z.B. Shop oder Inventar)
-		local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-		if playerGui then
-			local rrUI = playerGui:FindFirstChild("RealmRaidersUI")
-			if rrUI then
-				local shopWin = rrUI:FindFirstChild("BlacksmithShopWindow")
-				if shopWin and shopWin.Visible then
-					return
-				end
-				local invModal = rrUI:FindFirstChild("InventoryModal")
-				if invModal and invModal.Visible then
-					return
-				end
-			end
-		end
-
-		local now = os.clock()
-		if now - lastAttackTime < currentAttackCooldown then
-			return
-		end
-		lastAttackTime = now
-
-		-- Client-Feedback sofort abspielen (Null Latenzgefühl)
-		playAttackFeedback()
-
-		-- Server-autoritären Angriffs-Intent senden
-		AttackIntent:FireServer()
+		CombatController.TriggerAttack()
 	end
 
 	-- Q-Taste oder Gamepad-ButtonR2 = Combat-Dash
 	if input.KeyCode == Enum.KeyCode.Q
 		or input.KeyCode == Enum.KeyCode.ButtonR2 then
-		executeDash()
+		CombatController.TriggerDash()
 	end
 end
 
@@ -689,7 +755,7 @@ function CombatController.Init()
 		playHitFeedback(position, damage, isCrit == true, isLocalPlayerVictim == true, kind)
 	end)
 
-	print("[CombatController] Initialisiert: Nahkampf (F/Klick), Dash (Q) mit FoV-Punch, Slash-Trail, Damage Numbers, Hit-Sparks & Sound-Juice aktiv.")
+	print("[CombatController] Initialisiert: Nahkampf (Linksklick/F/Mobile-Touch-Button), Dash (Q/L2/Mobile-Touch-Button) mit FoV-Punch, Slash-Trail, Damage Numbers, Hit-Sparks & Sound-Juice aktiv.")
 end
 
 return CombatController

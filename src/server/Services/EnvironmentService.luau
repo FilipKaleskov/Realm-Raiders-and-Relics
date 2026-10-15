@@ -263,6 +263,9 @@ local function createBlacksmithShop(envFolder: Folder): Model
 	prompt.HoldDuration = 0
 	prompt.MaxActivationDistance = 14
 	prompt.RequiresLineOfSight = false
+	-- Phase 3 (Mobile): Prompt ist auf Touch-Geräten antippbar und wird clientseitig
+	-- durch ein großes, daumenfreundliches Touch-Ziel ersetzt.
+	prompt.ClickablePrompt = true
 	prompt.Parent = anvilBase
 
 	prompt.Triggered:Connect(function(player: Player)
